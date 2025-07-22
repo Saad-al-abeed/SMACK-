@@ -1,24 +1,24 @@
-#ifndef PLAYER_H
-#define PLAYER_H
+#ifndef PLAYER2_H
+#define PLAYER2_H
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
 
 typedef enum
 {
-    PLAYER_IDLE,
-    PLAYER_WALKING,
-    PLAYER_JUMPING,
-    PLAYER_ATTACKING,
-    PLAYER_BLOCKING,
-    //PLAYER_DEATH
-} PlayerState;
+    PLAYER2_IDLE,
+    PLAYER2_WALKING,
+    PLAYER2_JUMPING,
+    PLAYER2_ATTACKING,
+    PLAYER2_BLOCKING,
+    // PLAYER2_DEATH
+} Player2State;
 
 typedef enum
 {
-    FACING_RIGHT,
-    FACING_LEFT
-} PlayerDirection;
+    RIGHT,
+    LEFT
+} Player2Direction;
 
 typedef struct
 {
@@ -39,7 +39,7 @@ typedef struct
     SDL_Texture *attack2_texture;
     SDL_Texture *attack3_texture;
     SDL_Texture *block_texture;
-    //SDL_Texture *death_texture;
+    // SDL_Texture *death_texture;
 
     SDL_Rect src_rect;
     SDL_Rect dest_rect;
@@ -53,23 +53,23 @@ typedef struct
     Uint32 frame_delay;
 
     // State
-    PlayerState state;
-    PlayerDirection direction;
+    Player2State state;
+    Player2Direction direction;
 
     // Combat
     bool is_attacking;
     bool is_blocking;
     Uint32 attack_start_time;
     Uint32 attack_duration;
-} Player;
+} Player2;
 
 // Function declarations
-Player *create_player(SDL_Renderer *renderer, float x, float y);
+Player2 *create_player2(SDL_Renderer *renderer, float x, float y);
 
-void destroy_player(Player *player);
-void handle_player_input(Player *player, const Uint8 *keystate);
-void update_player(Player *player, Uint32 delta_time);
-void render_player(SDL_Renderer *renderer, Player *player);
-void set_player_state(Player *player, PlayerState new_state);
+void destroy_player2(Player2 *player2);
+void handle_player2_input(Player2 *player2, const Uint8 *keystate);
+void update_player2(Player2 *player2, Uint32 delta_time);
+void render_player2(SDL_Renderer *renderer, Player2 *player2);
+void set_player2_state(Player2 *player2, Player2State new_state);
 
-#endif // PLAYER_H
+#endif // PLAYER2_H

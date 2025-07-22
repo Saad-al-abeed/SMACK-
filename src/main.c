@@ -5,7 +5,8 @@
 #include <stdio.h>
 #include <stdbool.h>
 #include "background.h"
-// #include "player.h"
+#include "player.h"
+#include "player2.h"
 
 int main(int argc, char *argv[])
 {
@@ -66,7 +67,7 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Create background
+    // Create backgrounds
     Background *bg = create_background(ren, "assets/textures/intro_screen.bmp", 12, 100);
     if (!bg)
     {
@@ -81,6 +82,7 @@ int main(int argc, char *argv[])
     Background *map1 = create_background(ren, "assets/textures/autumn.bmp", 12, 100);
     if (!map1)
     {
+        destroy_background(bg);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
         TTF_Quit();
@@ -92,6 +94,8 @@ int main(int argc, char *argv[])
     Background *map2 = create_background(ren, "assets/textures/cherry_blossom.bmp", 7, 100);
     if (!map2)
     {
+        destroy_background(map1);
+        destroy_background(bg);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
         TTF_Quit();
@@ -103,6 +107,9 @@ int main(int argc, char *argv[])
     Background *map3 = create_background(ren, "assets/textures/sunset.bmp", 5, 100);
     if (!map3)
     {
+        destroy_background(map2);
+        destroy_background(map1);
+        destroy_background(bg);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
         TTF_Quit();
@@ -112,11 +119,15 @@ int main(int argc, char *argv[])
         return 1;
     }
 
-    // Create button
+    // Create buttons
     Button *play = create_button(ren, 560, 332,
                                  "assets/textures/unselected-export.bmp", "assets/textures/selected-export.bmp");
     if (!play)
     {
+        destroy_background(map3);
+        destroy_background(map2);
+        destroy_background(map1);
+        destroy_background(bg);
         SDL_DestroyRenderer(ren);
         SDL_DestroyWindow(win);
         TTF_Quit();
@@ -127,71 +138,25 @@ int main(int argc, char *argv[])
     }
 
     Button *single_play = create_button(ren, 280, 400,
-                                 "assets/textures/unselected-export.bmp", "assets/textures/selected-export.bmp");
-    if (!single_play)
-    {
-        SDL_DestroyRenderer(ren);
-        SDL_DestroyWindow(win);
-        TTF_Quit();
-        Mix_CloseAudio();
-        IMG_Quit();
-        SDL_Quit();
-        return 1;
-    }
-
+                                        "assets/textures/singleplayer_unselected.bmp", "assets/textures/singleplayer_selected.bmp");
     Button *multi_play = create_button(ren, 840, 400,
-                                 "assets/textures/unselected-export.bmp", "assets/textures/selected-export.bmp");
-    if (!multi_play)
-    {
-        SDL_DestroyRenderer(ren);
-        SDL_DestroyWindow(win);
-        TTF_Quit();
-        Mix_CloseAudio();
-        IMG_Quit();
-        SDL_Quit();
-        return 1;
-    }
-
+                                       "assets/textures/multiplayer_us.bmp", "assets/textures/multiplayer_s.bmp");
     Button *map1_btn = create_button(ren, 280, 400,
-                                       "assets/textures/unselected-export.bmp", "assets/textures/selected-export.bmp");
-    if (!map1_btn)
-    {
-        SDL_DestroyRenderer(ren);
-        SDL_DestroyWindow(win);
-        TTF_Quit();
-        Mix_CloseAudio();
-        IMG_Quit();
-        SDL_Quit();
-        return 1;
-    }
-
+                                     "assets/textures/unselected-export.bmp", "assets/textures/selected-export.bmp");
     Button *map2_btn = create_button(ren, 560, 400,
                                      "assets/textures/unselected-export.bmp", "assets/textures/selected-export.bmp");
-    if (!map2_btn)
-    {
-        SDL_DestroyRenderer(ren);
-        SDL_DestroyWindow(win);
-        TTF_Quit();
-        Mix_CloseAudio();
-        IMG_Quit();
-        SDL_Quit();
-        return 1;
-    }
-
     Button *map3_btn = create_button(ren, 840, 400,
                                      "assets/textures/unselected-export.bmp", "assets/textures/selected-export.bmp");
-    if (!map3_btn)
-    {
-        SDL_DestroyRenderer(ren);
-        SDL_DestroyWindow(win);
-        TTF_Quit();
-        Mix_CloseAudio();
-        IMG_Quit();
-        SDL_Quit();
-        return 1;
-    }
 
-    // For frame timing
+    // Game state variables
+    Player *player = NULL;
+    Player2 *player2 = NULL; // For multiplayer
+    Background *current_background = bg;
+    bool game_started = false;
+    Uint32 last_time = SDL_GetTicks();
+    Uint32 delta_time;
+
+    // UI state
     SDL_Event e;
     int running = 1;
     bool play_button_visible = true;
@@ -204,6 +169,11 @@ int main(int argc, char *argv[])
     // Main loop
     while (running)
     {
+        // Calculate delta time
+        Uint32 current_time = SDL_GetTicks();
+        delta_time = current_time - last_time;
+        last_time = current_time;
+
         // Handle events
         while (SDL_PollEvent(&e))
         {
@@ -239,71 +209,124 @@ int main(int argc, char *argv[])
             }
         }
 
-        // Update game state
-        update_background(bg);
+        // Get keyboard state for player input
+        const Uint8 *keystate = SDL_GetKeyboardState(NULL);
+        const Uint8 *keystate2 = SDL_GetKeyboardState(NULL);
 
-        // Render
+        // Handle player input if player exists and game has started
+        if (player && game_started)
+        {
+            handle_player_input(player, keystate);
+        }
+        if (player2 && game_started)
+        {
+            handle_player2_input(player2, keystate2);
+        }
+
+        // Update current background
+        update_background(current_background);
+
+        // Update player if exists and game has started
+        if (player && game_started)
+        {
+            update_player(player, delta_time);
+        }
+        if (player2 && game_started)
+        {
+            update_player2(player2, delta_time);
+        }
+
+        // Clear renderer
         SDL_RenderClear(ren);
-        render_background(ren, bg);
 
-        // Check if button was clicked and handle accordingly
+        // Render current background
+        render_background(ren, current_background);
+
+        // Handle menu navigation
         if (play_button_visible && play_button_clicked(play))
         {
-            play_button_visible = false;   // Hide the button instead of destroying it
-            //play->is_pressed = false; // Reset the pressed state
+            play_button_visible = false;
             single_play_button_visible = true;
             multi_play_button_visible = true;
-            // You can add additional logic here when button is clicked
-            // For example: start the game, change state, etc.
         }
+
         if (single_play_button_visible && single_play_button_clicked(single_play))
         {
-            single_play_button_visible = false; // Hide the button instead of destroying it
+            single_play_button_visible = false;
             multi_play_button_visible = false;
-            //single_play->is_pressed = false;    // Reset the pressed state
-            // You can add additional logic here when button is clicked
-            // For example: start the game, change state, etc.
-        }
-        if (multi_play_button_visible && multi_play_button_clicked(multi_play))
-        {
-            single_play_button_visible = false; // Hide the button instead of destroying it
-            multi_play_button_visible = false;
-            //multi_play->is_pressed = false;    // Reset the pressed state
-            // You can add additional logic here when button is clicked
-            // For example: start the game, change state, etc.
-        }
-        if (single_play_button_clicked(single_play) || multi_play_button_clicked(multi_play))
-        {
             map1_btn_visible = true;
             map2_btn_visible = true;
             map3_btn_visible = true;
-            if (map1_button_clicked(map1_btn))
+        }
+
+        if (multi_play_button_visible && multi_play_button_clicked(multi_play))
+        {
+            single_play_button_visible = false;
+            multi_play_button_visible = false;
+            map1_btn_visible = true;
+            map2_btn_visible = true;
+            map3_btn_visible = true;
+        }
+
+        // Handle map selection
+        if (map1_btn_visible && map1_button_clicked(map1_btn))
+        {
+            map1_btn_visible = false;
+            map2_btn_visible = false;
+            map3_btn_visible = false;
+            current_background = map1;
+            game_started = true;
+
+            // Create player when map is selected
+            if (!player)
             {
-                map1_btn_visible = false;
-                map2_btn_visible = false;
-                map3_btn_visible = false;
-                render_background(ren, map1);
-                update_background(map1);
+                player = create_player(ren, 100, 375);
             }
-            if (map2_button_clicked(map2_btn))
+            if (multi_play_button_clicked(multi_play))
             {
-                map1_btn_visible = false;
-                map2_btn_visible = false;
-                map3_btn_visible = false;
-                render_background(ren, map2);
-                update_background(map2);
-            }
-            if (map3_button_clicked(map3_btn))
-            {
-                map1_btn_visible = false;
-                map2_btn_visible = false;
-                map3_btn_visible = false;
-                render_background(ren, map3);
-                update_background(map3);
+                player2 = create_player2(ren, 1000, 375);
             }
         }
 
-        // Only render button if it's visible
+        if (map2_btn_visible && map2_button_clicked(map2_btn))
+        {
+            map1_btn_visible = false;
+            map2_btn_visible = false;
+            map3_btn_visible = false;
+            current_background = map2;
+            game_started = true;
+
+            // Create player when map is selected
+            if (!player)
+            {
+                player = create_player(ren, 100, 375);
+            }
+            if (multi_play_button_clicked(multi_play))
+            {
+                player2 = create_player2(ren, 1000, 375);
+            }
+        }
+
+        if (map3_btn_visible && map3_button_clicked(map3_btn))
+        {
+            map1_btn_visible = false;
+            map2_btn_visible = false;
+            map3_btn_visible = false;
+            current_background = map3;
+            game_started = true;
+
+            // Create player when map is selected
+            if (!player)
+            {
+                player = create_player(ren, 100, 375);
+            }
+            if (multi_play_button_clicked(multi_play))
+            {
+                player2 = create_player2(ren, 1000, 375);
+            }
+        }
+
+        // Render UI elements
         if (play_button_visible)
         {
             render_button(ren, play);
@@ -329,10 +352,39 @@ int main(int argc, char *argv[])
             render_button(ren, map3_btn);
         }
 
+        // Render player if game has started
+        if (player && game_started)
+        {
+            render_player(ren, player);
+        }
+        if (player2 && game_started)
+        {
+            render_player2(ren, player2);
+        }
+
+        // Present the rendered frame
         SDL_RenderPresent(ren);
     }
 
     // Cleanup
+    if (player)
+    {
+        destroy_player(player);
+    }
+    if (player2)
+    {
+        destroy_player2(player2);
+    }
+    destroy_button(play);
+    destroy_button(single_play);
+    destroy_button(multi_play);
+    destroy_button(map1_btn);
+    destroy_button(map2_btn);
+    destroy_button(map3_btn);
+    destroy_background(bg);
+    destroy_background(map1);
+    destroy_background(map2);
+    destroy_background(map3);
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
     TTF_Quit();
