@@ -62,6 +62,8 @@ Player *create_player(SDL_Renderer *renderer, float x, float y)
     player->attack2_texture = NULL;
     player->attack3_texture = NULL;
     player->block_texture = NULL;
+    player->hurt_texture = NULL;  // Add this
+    player->death_texture = NULL; // Add this
 
     // Load textures
     player->idle_texture = load_texture(renderer, "assets/textures/Knight_1/Idle.bmp");
@@ -71,11 +73,13 @@ Player *create_player(SDL_Renderer *renderer, float x, float y)
     player->attack2_texture = load_texture(renderer, "assets/textures/Knight_1/Attack 2.bmp");
     player->attack3_texture = load_texture(renderer, "assets/textures/Knight_1/Attack 3.bmp");
     player->block_texture = load_texture(renderer, "assets/textures/Knight_1/Protect.bmp");
+    player->hurt_texture = load_texture(renderer, "assets/textures/Knight_1/Hurt.bmp");   // Add this
+    player->death_texture = load_texture(renderer, "assets/textures/Knight_1/Dead.bmp"); // Add this
 
     // Check if all textures loaded successfully
     if (!player->idle_texture || !player->walking_texture || !player->jumping_texture ||
         !player->attack_texture || !player->attack2_texture || !player->attack3_texture ||
-        !player->block_texture)
+        !player->block_texture || !player->hurt_texture || !player->death_texture)
     {
         fprintf(stderr, "Failed to load one or more player textures\n");
         destroy_player(player);
@@ -90,7 +94,7 @@ Player *create_player(SDL_Renderer *renderer, float x, float y)
     // Get initial frame width from idle texture
     int texture_width, texture_height;
     get_texture_dimensions(player->idle_texture, &texture_width, &texture_height);
-    player->frame_width = texture_width / 1; // Idle has 4 frames
+    player->frame_width = texture_width / 1; // Idle has 1 frame
     player->frame_count = 1;
     player->frame_delay = 150;
 
@@ -113,6 +117,7 @@ Player *create_player(SDL_Renderer *renderer, float x, float y)
     player->attack_start_time = 0;
     player->attack_duration = 500; // milliseconds
     player->current_attack = 0;    // Initialize attack counter
+    //player->is_visible = true;     // Add this for death handling
 
     // Set initial state properly (this will set the correct frame_count and frame_delay)
     set_player_state(player, PLAYER_IDLE);
@@ -139,13 +144,17 @@ void destroy_player(Player *player)
         SDL_DestroyTexture(player->attack3_texture);
     if (player->block_texture)
         SDL_DestroyTexture(player->block_texture);
+    if (player->hurt_texture)
+        SDL_DestroyTexture(player->hurt_texture);
+    if (player->death_texture)
+        SDL_DestroyTexture(player->death_texture);
 
     free(player);
 }
 
 void handle_player_input(Player *player, const Uint8 *keystate)
 {
-    if (!player)
+    if (!player || player->state == PLAYER_HURT || player->state == PLAYER_DEATH)
         return;
 
     // Store previous velocity for movement state detection
@@ -285,11 +294,38 @@ void update_player(Player *player, Uint32 delta_time)
     Uint32 current_time = SDL_GetTicks();
     if (current_time - player->last_frame_time >= player->frame_delay)
     {
-        player->current_frame = (player->current_frame + 1) % player->frame_count;
-        player->last_frame_time = current_time;
+        if (player->state == PLAYER_DEATH)
+        {
+            /* Let the animation run once and then freeze                */
+            if (player->current_frame < player->frame_count - 1)
+            {
+                player->current_frame++;
+                player->src_rect.x = player->current_frame * player->frame_width;
+            }
+            /* nothing happens once we are on the last frame             */
+        }
+        else if (player->state == PLAYER_ATTACKING)
+        {
+            if (player->current_frame < player->frame_count - 1)
+            {
+                player->current_frame++;
+            }
+            else
+            {
+                /* animation finished; if the combat code has already
+                   set is_attacking = false, drop back to idle         */
+                if (!player->is_attacking)
+                    set_player_state(player, PLAYER_IDLE);
+            }
+            player->src_rect.x = player->current_frame * player->frame_width;
+        }
+        else /* every other state keeps looping as usual                 */
+        {
+            player->current_frame = (player->current_frame + 1) % player->frame_count;
+            player->src_rect.x = player->current_frame * player->frame_width;
+        }
 
-        // Update source rectangle for animation
-        player->src_rect.x = player->current_frame * player->frame_width;
+        player->last_frame_time = current_time;
     }
 
     // Update destination rectangle
@@ -307,7 +343,7 @@ void update_player(Player *player, Uint32 delta_time)
 
 void render_player(SDL_Renderer *renderer, Player *player)
 {
-    if (!player || !renderer)
+    if (!player || !renderer) // Check visibility
         return;
 
     SDL_Texture *current_texture = NULL;
@@ -341,6 +377,12 @@ void render_player(SDL_Renderer *renderer, Player *player)
         break;
     case PLAYER_BLOCKING:
         current_texture = player->block_texture;
+        break;
+    case PLAYER_HURT:
+        current_texture = player->hurt_texture;
+        break;
+    case PLAYER_DEATH:
+        current_texture = player->death_texture;
         break;
     }
 
@@ -417,6 +459,16 @@ void set_player_state(Player *player, PlayerState new_state)
         texture = player->block_texture;
         player->frame_count = 1; // Single frame for blocking
         player->frame_delay = 100;
+        break;
+    case PLAYER_HURT:
+        texture = player->hurt_texture;
+        player->frame_count = 2; // Adjust based on your hurt animation frames
+        player->frame_delay = 100;
+        break;
+    case PLAYER_DEATH:
+        texture = player->death_texture;
+        player->frame_count = 6; // Adjust based on your death animation frames
+        player->frame_delay = 150;
         break;
     }
 

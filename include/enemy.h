@@ -1,25 +1,26 @@
-#ifndef PLAYER2_H
-#define PLAYER2_H
+#ifndef ENEMY_H
+#define ENEMY_H
 
 #include <SDL2/SDL.h>
 #include <stdbool.h>
+#include "player.h"
 
 typedef enum
 {
-    PLAYER2_IDLE,
-    PLAYER2_WALKING,
-    PLAYER2_JUMPING,
-    PLAYER2_ATTACKING,
-    PLAYER2_BLOCKING,
-    PLAYER2_DEATH,
-    PLAYER2_HURT
-} Player2State;
+    ENEMY_IDLE,
+    ENEMY_WALKING,
+    ENEMY_JUMPING,
+    ENEMY_ATTACKING,
+    ENEMY_BLOCKING,
+    ENEMY_DEATH,
+    ENEMY_HURT
+} EnemyState;
 
 typedef enum
 {
-    RIGHT,
-    LEFT
-} Player2Direction;
+    R,
+    L
+} EnemyDirection;
 
 typedef struct
 {
@@ -55,23 +56,23 @@ typedef struct
     Uint32 frame_delay;
 
     // State
-    Player2State state;
-    Player2Direction direction;
+    EnemyState state;
+    EnemyDirection direction;
 
     // Combat
     bool is_attacking;
     bool is_blocking;
     Uint32 attack_start_time;
     Uint32 attack_duration;
-} Player2;
+} Enemy;
 
 // Function declarations
-Player2 *create_player2(SDL_Renderer *renderer, float x, float y);
+Enemy *create_enemy(SDL_Renderer *renderer, float x, float y);
 
-void destroy_player2(Player2 *player2);
-void handle_player2_input(Player2 *player2, const Uint8 *keystate);
-void update_player2(Player2 *player2, Uint32 delta_time);
-void render_player2(SDL_Renderer *renderer, Player2 *player2);
-void set_player2_state(Player2 *player2, Player2State new_state);
+void destroy_enemy(Enemy *enemy);
+void handle_enemy_ai(Enemy *enemy, Player *player, float delta_time);
+void update_enemy(Enemy *enemy, Uint32 delta_time);
+void render_enemy(SDL_Renderer *renderer, Enemy *enemy);
+void set_enemy_state(Enemy *enemy, EnemyState new_state);
 
-#endif // PLAYER2_H
+#endif // ENEMY_H

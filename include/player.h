@@ -11,7 +11,8 @@ typedef enum
     PLAYER_JUMPING,
     PLAYER_ATTACKING,
     PLAYER_BLOCKING,
-    //PLAYER_DEATH
+    PLAYER_DEATH,
+    PLAYER_HURT
 } PlayerState;
 
 typedef enum
@@ -39,7 +40,8 @@ typedef struct
     SDL_Texture *attack2_texture;
     SDL_Texture *attack3_texture;
     SDL_Texture *block_texture;
-    //SDL_Texture *death_texture;
+    SDL_Texture *death_texture;
+    SDL_Texture *hurt_texture;
 
     SDL_Rect src_rect;
     SDL_Rect dest_rect;
