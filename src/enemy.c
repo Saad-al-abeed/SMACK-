@@ -115,7 +115,7 @@ Enemy *create_enemy(SDL_Renderer *renderer, float x, float y)
     enemy->is_attacking = false;
     enemy->is_blocking = false;
     enemy->attack_start_time = 0;
-    enemy->attack_duration = 500; // milliseconds
+    enemy->attack_duration = 600; // milliseconds
     enemy->current_attack = 0;    // Initialize attack counter
 
     // Set initial state properly (this will set the correct frame_count and frame_delay)
@@ -508,17 +508,19 @@ void set_enemy_state(Enemy *enemy, EnemyState new_state)
         case 0:
             texture = enemy->attack_texture;
             enemy->frame_count = 5; // Attack 1 has 5 frames
+            enemy->frame_delay = 100;
             break;
         case 1:
             texture = enemy->attack2_texture;
             enemy->frame_count = 4; // Attack 2 has 4 frames
+            enemy->frame_delay = 125;
             break;
         case 2:
             texture = enemy->attack3_texture;
             enemy->frame_count = 4; // Attack 3 has 4 frames
+            enemy->frame_delay = 125;
             break;
         }
-        enemy->frame_delay = 80; // Faster animation for attacks
         break;
     case ENEMY_BLOCKING:
         texture = enemy->block_texture;
@@ -533,7 +535,7 @@ void set_enemy_state(Enemy *enemy, EnemyState new_state)
     case ENEMY_HURT:
         texture = enemy->hurt_texture;
         enemy->frame_count = 2; // Adjust based on your hurt animation frames
-        enemy->frame_delay = 100;
+        enemy->frame_delay = 50;
         break;
     }
 

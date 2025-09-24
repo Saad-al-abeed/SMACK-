@@ -3,8 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define GROUND_LEVEL 375 // Adjust based on your map
+#define GROUND_LEVEL 375
 #define PLAYER_HEIGHT 258
+
+/* PLACEHOLDER tunables */
+#define BLOCK_HURT_DURATION_MS 300
 
 static SDL_Texture *load_texture(SDL_Renderer *renderer, const char *path)
 {
@@ -14,22 +17,14 @@ static SDL_Texture *load_texture(SDL_Renderer *renderer, const char *path)
         fprintf(stderr, "Failed to load BMP %s: %s\n", path, SDL_GetError());
         return NULL;
     }
-
-    // Set color key for transparency (assuming magenta is transparent)
     SDL_SetColorKey(surface, SDL_TRUE, SDL_MapRGB(surface->format, 255, 0, 255));
-
     SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
     SDL_FreeSurface(surface);
-
     if (!texture)
-    {
         fprintf(stderr, "Failed to create texture from %s: %s\n", path, SDL_GetError());
-    }
-
     return texture;
 }
 
-// Helper function to get texture dimensions
 static void get_texture_dimensions(SDL_Texture *texture, int *w, int *h)
 {
     SDL_QueryTexture(texture, NULL, NULL, w, h);
@@ -39,22 +34,19 @@ Player *create_player(SDL_Renderer *renderer, float x, float y)
 {
     Player *player = (Player *)malloc(sizeof(Player));
     if (!player)
-    {
-        fprintf(stderr, "Failed to allocate memory for player\n");
         return NULL;
-    }
 
-    // Initialize position and physics
+    /* Physics */
     player->x = x;
     player->y = y;
     player->velocity_x = 0;
     player->velocity_y = 0;
-    player->speed = 450.0f; // pixels per second
+    player->speed = 450.0f;
     player->jump_force = -900.0f;
     player->gravity = 1500.0f;
     player->on_ground = false;
 
-    // Initialize all texture pointers to NULL first
+    /* Textures init */
     player->idle_texture = NULL;
     player->walking_texture = NULL;
     player->jumping_texture = NULL;
@@ -62,66 +54,71 @@ Player *create_player(SDL_Renderer *renderer, float x, float y)
     player->attack2_texture = NULL;
     player->attack3_texture = NULL;
     player->block_texture = NULL;
-    player->hurt_texture = NULL;  // Add this
-    player->death_texture = NULL; // Add this
+    player->hurt_texture = NULL;
+    player->death_texture = NULL;
 
-    // Load textures
-    player->idle_texture = load_texture(renderer, "assets/textures/Knight_1/Idle.bmp");
-    player->walking_texture = load_texture(renderer, "assets/textures/Knight_1/Run.bmp");
-    player->jumping_texture = load_texture(renderer, "assets/textures/Knight_1/Jump.bmp");
-    player->attack_texture = load_texture(renderer, "assets/textures/Knight_1/Attack 1.bmp");
-    player->attack2_texture = load_texture(renderer, "assets/textures/Knight_1/Attack 2.bmp");
-    player->attack3_texture = load_texture(renderer, "assets/textures/Knight_1/Attack 3.bmp");
-    player->block_texture = load_texture(renderer, "assets/textures/Knight_1/Protect.bmp");
-    player->hurt_texture = load_texture(renderer, "assets/textures/Knight_1/Hurt.bmp");   // Add this
-    player->death_texture = load_texture(renderer, "assets/textures/Knight_1/Dead.bmp"); // Add this
+    /* NEW */
+    player->slide_texture = NULL;
+    player->block_hurt_texture = NULL;
+    player->pray_texture = NULL;
+    player->down_attack_texture = NULL;
 
-    // Check if all textures loaded successfully
+    /* Load (PLACEHOLDER paths) */
+    player->idle_texture = load_texture(renderer, "assets/textures/Final/Idle_h258_w516.bmp");
+    player->walking_texture = load_texture(renderer, "assets/textures/Final/Run_h258_w516.bmp");
+    player->jumping_texture = load_texture(renderer, "assets/textures/Final/nor_jmp_h258_w516.bmp");
+    player->attack_texture = load_texture(renderer, "assets/textures/Final/atk1.bmp");
+    player->attack2_texture = load_texture(renderer, "assets/textures/Final/atk3.bmp");
+    player->attack3_texture = load_texture(renderer, "assets/textures/Final/atk4.bmp");
+    player->block_texture = load_texture(renderer, "assets/textures/Final/crouch_idle-sheet.bmp");
+    player->hurt_texture = load_texture(renderer, "assets/textures/Final/Hurt-sheet.bmp"); // Add this
+    player->death_texture = load_texture(renderer, "assets/textures/Final/Dth_h258_w516.bmp");
+    player->slide_texture = load_texture(renderer, "assets/textures/Final/Slide-sheet.bmp");
+    player->block_hurt_texture = load_texture(renderer, "assets/textures/Final/blockhurt.bmp");
+    player->pray_texture = load_texture(renderer, "assets/textures/Final/pray_h258_w516.bmp");
+    player->down_attack_texture = load_texture(renderer, "assets/textures/Final/jmph258w516.bmp");
+
+    /* Basic sanity (you will replace with real assets) */
     if (!player->idle_texture || !player->walking_texture || !player->jumping_texture ||
         !player->attack_texture || !player->attack2_texture || !player->attack3_texture ||
-        !player->block_texture || !player->hurt_texture || !player->death_texture)
+        !player->block_texture || !player->hurt_texture || !player->death_texture ||
+        !player->slide_texture || !player->block_hurt_texture ||
+        !player->pray_texture || !player->down_attack_texture)
     {
-        fprintf(stderr, "Failed to load one or more player textures\n");
+        fprintf(stderr, "Player: one or more textures failed to load (placeholders).\n");
         destroy_player(player);
         return NULL;
     }
 
-    // Initialize animation
+    /* Animation init */
     player->current_frame = 0;
     player->frame_height = PLAYER_HEIGHT;
     player->last_frame_time = SDL_GetTicks();
 
-    // Get initial frame width from idle texture
-    int texture_width, texture_height;
-    get_texture_dimensions(player->idle_texture, &texture_width, &texture_height);
-    player->frame_width = texture_width / 1; // Idle has 1 frame
+    int tw, th;
+    get_texture_dimensions(player->idle_texture, &tw, &th);
+    player->frame_width = (float)tw; /* idle default; will be updated by state */
     player->frame_count = 1;
     player->frame_delay = 150;
 
-    // Initialize rectangles
-    player->src_rect.x = 0;
-    player->src_rect.y = 0;
-    player->src_rect.w = player->frame_width;
-    player->src_rect.h = player->frame_height;
+    /* Rects */
+    player->src_rect = (SDL_Rect){0, 0, (int)player->frame_width, player->frame_height};
+    player->dest_rect = (SDL_Rect){(int)x, (int)y, (int)player->frame_width, player->frame_height};
 
-    player->dest_rect.x = (int)x;
-    player->dest_rect.y = (int)y;
-    player->dest_rect.w = player->frame_width;
-    player->dest_rect.h = player->frame_height;
-
-    // Initialize state
+    /* State & combat */
     player->state = PLAYER_IDLE;
     player->direction = FACING_RIGHT;
     player->is_attacking = false;
     player->is_blocking = false;
     player->attack_start_time = 0;
-    player->attack_duration = 500; // milliseconds
-    player->current_attack = 0;    // Initialize attack counter
-    //player->is_visible = true;     // Add this for death handling
+    player->attack_duration = 500; /* placeholder */
+    player->current_attack = 0;
 
-    // Set initial state properly (this will set the correct frame_count and frame_delay)
+    /* NEW: block-hurt timer */
+    player->block_hurt_start_time = 0;
+    player->block_hurt_duration = BLOCK_HURT_DURATION_MS;
+
     set_player_state(player, PLAYER_IDLE);
-
     return player;
 }
 
@@ -129,96 +126,98 @@ void destroy_player(Player *player)
 {
     if (!player)
         return;
-
-    if (player->idle_texture)
-        SDL_DestroyTexture(player->idle_texture);
-    if (player->walking_texture)
-        SDL_DestroyTexture(player->walking_texture);
-    if (player->jumping_texture)
-        SDL_DestroyTexture(player->jumping_texture);
-    if (player->attack_texture)
-        SDL_DestroyTexture(player->attack_texture);
-    if (player->attack2_texture)
-        SDL_DestroyTexture(player->attack2_texture);
-    if (player->attack3_texture)
-        SDL_DestroyTexture(player->attack3_texture);
-    if (player->block_texture)
-        SDL_DestroyTexture(player->block_texture);
-    if (player->hurt_texture)
-        SDL_DestroyTexture(player->hurt_texture);
-    if (player->death_texture)
-        SDL_DestroyTexture(player->death_texture);
-
+    SDL_Texture **txs[] = {
+        &player->idle_texture, &player->walking_texture, &player->jumping_texture,
+        &player->attack_texture, &player->attack2_texture, &player->attack3_texture,
+        &player->block_texture, &player->hurt_texture, &player->death_texture,
+        &player->slide_texture, &player->block_hurt_texture, &player->pray_texture,
+        &player->down_attack_texture};
+    for (size_t i = 0; i < sizeof(txs) / sizeof(txs[0]); ++i)
+        if (*txs[i])
+            SDL_DestroyTexture(*txs[i]);
     free(player);
 }
 
 void handle_player_input(Player *player, const Uint8 *keystate)
 {
-    if (!player || player->state == PLAYER_HURT || player->state == PLAYER_DEATH)
+    if (!player || player->state == PLAYER_DEATH)
         return;
 
-    // Store previous velocity for movement state detection
-    float prev_velocity_x = player->velocity_x;
+    /* While truly hurt, ignore input */
+    if (player->state == PLAYER_HURT)
+        return;
 
-    // Reset horizontal velocity
-    player->velocity_x = 0;
+    /* Reset horizontal velocity each frame; states will set as needed */
+    player->velocity_x = 0.0f;
 
-    // Movement - only walk while key is held
-    if (keystate[SDL_SCANCODE_A] && !player->is_attacking && !player->is_blocking)
+    /* Movement (A/D) disabled when blocking or in down-attack */
+    bool busy_attack = player->is_attacking && (player->state == PLAYER_ATTACKING || player->state == PLAYER_DOWN_ATTACK);
+    bool busy_block = player->is_blocking || player->state == PLAYER_BLOCKING;
+
+    if (keystate[SDL_SCANCODE_A] && !busy_attack && !busy_block)
     {
         player->velocity_x = -player->speed;
         player->direction = FACING_LEFT;
-        if (player->state != PLAYER_JUMPING && player->on_ground)
-        {
+        if (player->on_ground && player->state != PLAYER_SLIDE)
             set_player_state(player, PLAYER_WALKING);
-        }
     }
-    else if (keystate[SDL_SCANCODE_D] && !player->is_attacking && !player->is_blocking)
+    else if (keystate[SDL_SCANCODE_D] && !busy_attack && !busy_block)
     {
         player->velocity_x = player->speed;
         player->direction = FACING_RIGHT;
-        if (player->state != PLAYER_JUMPING && player->on_ground)
-        {
+        if (player->on_ground && player->state != PLAYER_SLIDE)
             set_player_state(player, PLAYER_WALKING);
-        }
     }
     else
     {
-        // Return to idle when movement keys are released
-        if (player->state == PLAYER_WALKING && player->on_ground && !player->is_attacking && !player->is_blocking)
-        {
+        if (player->state == PLAYER_WALKING && player->on_ground)
             set_player_state(player, PLAYER_IDLE);
-        }
     }
 
-    // Jump
-    if (keystate[SDL_SCANCODE_SPACE] && player->on_ground && !player->is_attacking && !player->is_blocking)
+    /* Jump */
+    if (keystate[SDL_SCANCODE_SPACE] && player->on_ground && !busy_attack && !busy_block)
     {
         player->velocity_y = player->jump_force;
         player->on_ground = false;
         set_player_state(player, PLAYER_JUMPING);
     }
 
-    // Attack - cycle through 3 attack animations
+    /* Attack cycle with W (ground attacks) */
     static bool w_was_pressed = false;
-    if (keystate[SDL_SCANCODE_W] && !player->is_attacking && !player->is_blocking )
+    if (keystate[SDL_SCANCODE_W] && !busy_attack && !busy_block && player->on_ground)
     {
-        if (!w_was_pressed) // Only trigger on key press, not hold
+        if (!w_was_pressed)
         {
             player->is_attacking = true;
             player->attack_start_time = SDL_GetTicks();
-            player->current_attack = (player->current_attack + 1) % 3; // Cycle through 0, 1, 2
+            player->current_attack = (player->current_attack + 1) % 3;
             set_player_state(player, PLAYER_ATTACKING);
             w_was_pressed = true;
         }
     }
     else
-    {
         w_was_pressed = false;
-    }
 
-    // Block - only block while key is held
-    if (keystate[SDL_SCANCODE_S] && !player->is_attacking )
+    /* NEW: Aerial straight-down attack with F (must be in air) */
+    static bool f_was_pressed = false;
+    if (keystate[SDL_SCANCODE_F] && !busy_attack && !busy_block && !player->on_ground)
+    {
+        if (!f_was_pressed)
+        {
+            player->is_attacking = true;
+            player->attack_start_time = SDL_GetTicks();
+            set_player_state(player, PLAYER_DOWN_ATTACK);
+            /* give a small downward boost to sell the dive */
+            if (player->velocity_y < 600.0f)
+                player->velocity_y = 600.0f;
+            f_was_pressed = true;
+        }
+    }
+    else
+        f_was_pressed = false;
+
+    /* Block while S held (unchanged) */
+    if (keystate[SDL_SCANCODE_S] && !busy_attack)
     {
         if (!player->is_blocking)
         {
@@ -231,12 +230,29 @@ void handle_player_input(Player *player, const Uint8 *keystate)
         if (player->is_blocking)
         {
             player->is_blocking = false;
-            set_player_state(player, PLAYER_IDLE);
+            if (player->on_ground)
+                set_player_state(player, PLAYER_IDLE);
         }
     }
 
-    //on air animation
-    if (!player->on_ground && player->state != PLAYER_JUMPING && !player->is_attacking && !player->is_blocking)
+    /* NEW: Slide on ALT (ground only) – while held */
+    bool alt_held = keystate[SDL_SCANCODE_LALT] || keystate[SDL_SCANCODE_RALT];
+    if (alt_held && player->on_ground && !busy_attack && !busy_block)
+    {
+        if (player->state != PLAYER_SLIDE)
+            set_player_state(player, PLAYER_SLIDE);
+        /* optional: a little glide in facing direction */
+        player->velocity_x = (player->direction == FACING_RIGHT ? player->speed * 1.2f : -player->speed * 1.2f);
+    }
+    else
+    {
+        if (player->state == PLAYER_SLIDE && player->on_ground)
+            set_player_state(player, PLAYER_IDLE);
+    }
+
+    /* Keep “in-air” anim fresh */
+    if (!player->on_ground && player->state != PLAYER_JUMPING &&
+        player->state != PLAYER_DOWN_ATTACK && player->state != PLAYER_HURT)
     {
         set_player_state(player, PLAYER_JUMPING);
     }
@@ -247,242 +263,252 @@ void update_player(Player *player, Uint32 delta_time)
     if (!player)
         return;
 
-    float dt = delta_time / 1000.0f; // Convert to seconds
+    float dt = delta_time / 1000.0f;
 
-    // Update position
+    /* Integrate */
     player->x += player->velocity_x * dt;
     player->y += player->velocity_y * dt;
 
-    // Apply gravity
+    /* Gravity */
     if (!player->on_ground)
-    {
         player->velocity_y += player->gravity * dt;
-    }
 
-    // Check ground collision (simple ground check)
+    /* Ground */
     if (player->y >= GROUND_LEVEL)
     {
         player->y = GROUND_LEVEL;
         player->velocity_y = 0;
-
-        if (!player->on_ground) // Just landed
+        if (!player->on_ground)
         {
             player->on_ground = true;
-            if (player->state == PLAYER_JUMPING)
-            {
+            if (player->state == PLAYER_JUMPING || player->state == PLAYER_DOWN_ATTACK)
                 set_player_state(player, PLAYER_IDLE);
-            }
         }
     }
     else
-    {
         player->on_ground = false;
-    }
 
-    // Update attack state
+    /* Attack timers */
     if (player->is_attacking)
     {
-        Uint32 current_time = SDL_GetTicks();
-        if (current_time - player->attack_start_time >= player->attack_duration)
+        Uint32 now = SDL_GetTicks();
+        if (now - player->attack_start_time >= player->attack_duration)
         {
             player->is_attacking = false;
-            set_player_state(player, PLAYER_IDLE);
+            if (player->on_ground)
+                set_player_state(player, PLAYER_IDLE);
+            else
+                set_player_state(player, PLAYER_JUMPING);
         }
     }
 
-    // Update animation
-    Uint32 current_time = SDL_GetTicks();
-    if (current_time - player->last_frame_time >= player->frame_delay)
+    /* Block-hurt timer (independent of real hurt) */
+    if (player->state == PLAYER_BLOCK_HURT)
     {
-        if (player->state == PLAYER_DEATH)
+        if (SDL_GetTicks() - player->block_hurt_start_time >= player->block_hurt_duration)
+            set_player_state(player, player->on_ground ? PLAYER_IDLE : PLAYER_JUMPING);
+    }
+
+    /* Animation advance */
+    Uint32 now = SDL_GetTicks();
+    if (now - player->last_frame_time >= player->frame_delay)
+    {
+        if (player->state == PLAYER_DEATH || player->state == PLAYER_PRAY)
         {
-            /* Let the animation run once and then freeze                */
             if (player->current_frame < player->frame_count - 1)
             {
                 player->current_frame++;
                 player->src_rect.x = player->current_frame * player->frame_width;
             }
-            /* nothing happens once we are on the last frame             */
+            /* freeze on last death frame; for PRAY we’ll drop to idle below */
+            if (player->state == PLAYER_PRAY && player->current_frame >= player->frame_count - 1)
+                set_player_state(player, PLAYER_IDLE);
         }
-        else if (player->state == PLAYER_ATTACKING)
+        else if (player->state == PLAYER_ATTACKING || player->state == PLAYER_DOWN_ATTACK)
         {
             if (player->current_frame < player->frame_count - 1)
-            {
                 player->current_frame++;
-            }
-            else
-            {
-                /* animation finished; if the combat code has already
-                   set is_attacking = false, drop back to idle         */
-                if (!player->is_attacking)
-                    set_player_state(player, PLAYER_IDLE);
-            }
             player->src_rect.x = player->current_frame * player->frame_width;
         }
-        else /* every other state keeps looping as usual                 */
+        else
         {
             player->current_frame = (player->current_frame + 1) % player->frame_count;
             player->src_rect.x = player->current_frame * player->frame_width;
         }
-
-        player->last_frame_time = current_time;
+        player->last_frame_time = now;
     }
 
-    // Update destination rectangle
+    /* Dest rect */
     player->dest_rect.x = (int)player->x;
     player->dest_rect.y = (int)player->y;
-    player->dest_rect.w = player->frame_width;
+    player->dest_rect.w = (int)player->frame_width;
     player->dest_rect.h = player->frame_height;
 
-    // Keep player on screen
-    if (player->x < 0)
-        player->x = 0;
-    if (player->x > 1280 - player->frame_width)
-        player->x = 1280 - player->frame_width;
+    /* Screen clamp (simple) */
+    if (player->x < -200)
+        player->x = -200;
+    if (player->x > 1280 + 200 - player->frame_width)
+        player->x = 1280 + 200 - player->frame_width;
 }
 
 void render_player(SDL_Renderer *renderer, Player *player)
 {
-    if (!player || !renderer) // Check visibility
+    if (!player || !renderer)
         return;
+    SDL_Texture *tex = NULL;
 
-    SDL_Texture *current_texture = NULL;
-
-    // Select appropriate texture based on state
     switch (player->state)
     {
     case PLAYER_IDLE:
-        current_texture = player->idle_texture;
+        tex = player->idle_texture;
         break;
     case PLAYER_WALKING:
-        current_texture = player->walking_texture;
+        tex = player->walking_texture;
         break;
     case PLAYER_JUMPING:
-        current_texture = player->jumping_texture;
+        tex = player->jumping_texture;
         break;
     case PLAYER_ATTACKING:
-        // Select attack texture based on current attack cycle
         switch (player->current_attack)
         {
         case 0:
-            current_texture = player->attack_texture;
+            tex = player->attack_texture;
             break;
         case 1:
-            current_texture = player->attack2_texture;
+            tex = player->attack2_texture;
             break;
-        case 2:
-            current_texture = player->attack3_texture;
+        default:
+            tex = player->attack3_texture;
             break;
         }
         break;
     case PLAYER_BLOCKING:
-        current_texture = player->block_texture;
+        tex = player->block_texture;
         break;
     case PLAYER_HURT:
-        current_texture = player->hurt_texture;
+        tex = player->hurt_texture;
         break;
     case PLAYER_DEATH:
-        current_texture = player->death_texture;
+        tex = player->death_texture;
+        break;
+    /* NEW */
+    case PLAYER_SLIDE:
+        tex = player->slide_texture;
+        break;
+    case PLAYER_BLOCK_HURT:
+        tex = player->block_hurt_texture;
+        break;
+    case PLAYER_PRAY:
+        tex = player->pray_texture;
+        break;
+    case PLAYER_DOWN_ATTACK:
+        tex = player->down_attack_texture;
         break;
     }
 
-    if (!current_texture)
-    {
-        fprintf(stderr, "No texture available for current player state %d\n", player->state);
+    if (!tex)
         return;
-    }
 
-    // Render with flip based on direction
     SDL_RendererFlip flip = (player->direction == FACING_LEFT) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-
-    if (SDL_RenderCopyEx(renderer, current_texture, &player->src_rect, &player->dest_rect,
-                         0, NULL, flip) != 0)
-    {
-        fprintf(stderr, "Failed to render player: %s\n", SDL_GetError());
-    }
+    SDL_RenderCopyEx(renderer, tex, &player->src_rect, &player->dest_rect, 0, NULL, flip);
 }
 
-void set_player_state(Player *player, PlayerState new_state)
+void set_player_state(Player *player, PlayerState s)
 {
     if (!player)
         return;
-
-    // Only change state if it's different (except for attacking which can cycle)
-    if (player->state == new_state && new_state != PLAYER_ATTACKING)
+    if (player->state == s && s != PLAYER_ATTACKING && s != PLAYER_DOWN_ATTACK)
         return;
 
-    player->state = new_state;
-    player->current_frame = 0;                // Reset animation
-    player->last_frame_time = SDL_GetTicks(); // Reset animation timer
+    player->state = s;
+    player->current_frame = 0;
+    player->last_frame_time = SDL_GetTicks();
 
-    SDL_Texture *texture = NULL;
-    int texture_width, texture_height;
+    SDL_Texture *t = NULL;
+    int tw = 0, th = 0;
 
-    // Set frame count and delay based on the new state, and update frame width
-    switch (new_state)
+    switch (s)
     {
     case PLAYER_IDLE:
-        texture = player->idle_texture;
-        player->frame_count = 1;
-        player->frame_delay = 150; // Slower for idle
+        t = player->idle_texture;
+        player->frame_count = 8;
+        player->frame_delay = 100;
         break;
     case PLAYER_WALKING:
-        texture = player->walking_texture;
-        player->frame_count = 7;
+        t = player->walking_texture;
+        player->frame_count = 8;
         player->frame_delay = 100;
         break;
     case PLAYER_JUMPING:
-        texture = player->jumping_texture;
-        player->frame_count = 6;
+        t = player->jumping_texture;
+        player->frame_count = 8;
         player->frame_delay = 100;
-        break;
-    case PLAYER_ATTACKING:
-        // Set frame count based on which attack animation
-        switch (player->current_attack)
-        {
-        case 0:
-            texture = player->attack_texture;
-            player->frame_count = 5; // Attack 1 has 5 frames
-            break;
-        case 1:
-            texture = player->attack2_texture;
-            player->frame_count = 4; // Attack 2 has 4 frames
-            break;
-        case 2:
-            texture = player->attack3_texture;
-            player->frame_count = 4; // Attack 3 has 4 frames
-            break;
-        }
-        player->frame_delay = 80; // Faster animation for attacks
         break;
     case PLAYER_BLOCKING:
-        texture = player->block_texture;
-        player->frame_count = 1; // Single frame for blocking
-        player->frame_delay = 100;
-        break;
-    case PLAYER_HURT:
-        texture = player->hurt_texture;
-        player->frame_count = 2; // Adjust based on your hurt animation frames
+        t = player->block_texture;
+        player->frame_count = 1;
         player->frame_delay = 100;
         break;
     case PLAYER_DEATH:
-        texture = player->death_texture;
-        player->frame_count = 6; // Adjust based on your death animation frames
-        player->frame_delay = 150;
+        t = player->death_texture;
+        player->frame_count = 4;
+        player->frame_delay = 125;
+        break;
+    case PLAYER_HURT:
+        t = player->hurt_texture;
+        player->frame_count = 3;
+        player->frame_delay = 100;
+        break;
+    case PLAYER_ATTACKING:
+        switch (player->current_attack)
+        {
+        case 0:
+            t = player->attack_texture;
+            player->frame_count = 6; // Attack 1 has 5 frames
+            player->frame_delay = 100;
+            break;
+        case 1:
+            t = player->attack2_texture;
+            player->frame_count = 4; // Attack 2 has 4 frames
+            player->frame_delay = 150;
+            break;
+        case 2:
+            t = player->attack3_texture;
+            player->frame_count = 6; // Attack 3 has 4 frames
+            player->frame_delay = 100;
+            break;
+        }
+        break;
+    /* NEW */
+    case PLAYER_SLIDE:
+        t = player->slide_texture;
+        player->frame_count = 10;
+        player->frame_delay = 80;
+        break;
+    case PLAYER_BLOCK_HURT:
+        t = player->block_hurt_texture;
+        player->frame_count = 6;
+        player->frame_delay = 50;
+        player->block_hurt_start_time = SDL_GetTicks();
+        break;
+    case PLAYER_PRAY:
+        t = player->pray_texture;
+        player->frame_count = 12;
+        player->frame_delay = 100;
+        break;
+    case PLAYER_DOWN_ATTACK:
+        t = player->down_attack_texture;
+        player->frame_count = 7;
+        player->frame_delay = 140;
         break;
     }
 
-    // Update frame width based on the texture
-    if (texture)
+    if (t)
     {
-        get_texture_dimensions(texture, &texture_width, &texture_height);
-        player->frame_width = texture_width / player->frame_count;
-
-        // Update rectangles with new dimensions
-        player->src_rect.w = player->frame_width;
-        player->dest_rect.w = player->frame_width;
+        get_texture_dimensions(t, &tw, &th);
+        player->frame_width = (float)tw / (float)player->frame_count;
+        player->src_rect.w = (int)player->frame_width;
+        player->dest_rect.w = (int)player->frame_width;
     }
-
-    // Reset source rectangle to first frame
     player->src_rect.x = 0;
 }

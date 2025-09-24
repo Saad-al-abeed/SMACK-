@@ -210,9 +210,9 @@ int main(int argc, char *argv[])
             if (!player)
                 player = create_player(ren, 100, 375);
             if (is_multiplayer && !player2)
-                player2 = create_player2(ren, 1000, 375);
+                player2 = create_player2(ren, 800, 375);
             if (!is_multiplayer && !enemy)
-                enemy = create_enemy(ren, 1000, 375);          /* NEW */
+                enemy = create_enemy(ren, 800, 375);          /* NEW */
             if (!mulfight && is_multiplayer && player && player2) /* NEW */
                 mulfight = create_multi_fight();
             if (!sinfight && !is_multiplayer && player && enemy) /* NEW */
@@ -229,9 +229,9 @@ int main(int argc, char *argv[])
             if (!player)
                 player = create_player(ren, 100, 375);
             if (is_multiplayer && !player2)
-                player2 = create_player2(ren, 1000, 375);
+                player2 = create_player2(ren, 800, 375);
             if (!is_multiplayer && !enemy)
-                enemy = create_enemy(ren, 1000, 375);             /* NEW */
+                enemy = create_enemy(ren, 800, 375);             /* NEW */
             if (!mulfight && is_multiplayer && player && player2) /* NEW */
                 mulfight = create_multi_fight();
             if (!sinfight && !is_multiplayer && player && enemy) /* NEW */
@@ -248,9 +248,9 @@ int main(int argc, char *argv[])
             if (!player)
                 player = create_player(ren, 100, 375);
             if (is_multiplayer && !player2)
-                player2 = create_player2(ren, 1000, 375);
+                player2 = create_player2(ren, 800, 375);
             if (!is_multiplayer && !enemy)
-                enemy = create_enemy(ren, 1000, 375);             /* NEW */
+                enemy = create_enemy(ren, 800, 375);             /* NEW */
             if (!mulfight && is_multiplayer && player && player2) /* NEW */
                 mulfight = create_multi_fight();
             if (!sinfight && !is_multiplayer && player && enemy) /* NEW */

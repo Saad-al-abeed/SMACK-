@@ -12,7 +12,12 @@ typedef enum
     PLAYER_ATTACKING,
     PLAYER_BLOCKING,
     PLAYER_DEATH,
-    PLAYER_HURT
+    PLAYER_HURT,
+    /* NEW */
+    PLAYER_SLIDE,
+    PLAYER_BLOCK_HURT,
+    PLAYER_PRAY,
+    PLAYER_DOWN_ATTACK
 } PlayerState;
 
 typedef enum
@@ -23,7 +28,7 @@ typedef enum
 
 typedef struct
 {
-    // Position and physics
+    /* Position and physics */
     float x, y;
     float velocity_x, velocity_y;
     float speed;
@@ -32,7 +37,7 @@ typedef struct
     int current_attack;
     bool on_ground;
 
-    // Animation
+    /* Animation textures */
     SDL_Texture *idle_texture;
     SDL_Texture *walking_texture;
     SDL_Texture *jumping_texture;
@@ -43,10 +48,16 @@ typedef struct
     SDL_Texture *death_texture;
     SDL_Texture *hurt_texture;
 
+    /* NEW textures */
+    SDL_Texture *slide_texture;
+    SDL_Texture *block_hurt_texture;
+    SDL_Texture *pray_texture;
+    SDL_Texture *down_attack_texture;
+
     SDL_Rect src_rect;
     SDL_Rect dest_rect;
 
-    // Animation frames
+    /* Animation frames */
     int current_frame;
     int frame_count;
     float frame_width;
@@ -54,24 +65,27 @@ typedef struct
     Uint32 last_frame_time;
     Uint32 frame_delay;
 
-    // State
+    /* State */
     PlayerState state;
     PlayerDirection direction;
 
-    // Combat
+    /* Combat */
     bool is_attacking;
     bool is_blocking;
     Uint32 attack_start_time;
     Uint32 attack_duration;
+
+    /* NEW: block-hurt timing (separate from real hurt) */
+    Uint32 block_hurt_start_time;
+    Uint32 block_hurt_duration;
 } Player;
 
-// Function declarations
+/* API */
 Player *create_player(SDL_Renderer *renderer, float x, float y);
-
 void destroy_player(Player *player);
 void handle_player_input(Player *player, const Uint8 *keystate);
 void update_player(Player *player, Uint32 delta_time);
 void render_player(SDL_Renderer *renderer, Player *player);
 void set_player_state(Player *player, PlayerState new_state);
 
-#endif // PLAYER_H
+#endif /* PLAYER_H */

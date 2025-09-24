@@ -115,7 +115,7 @@ void collision(SingleFight *fight, Player *p1, Enemy *p2)
     if (overlap_x <= ALLOWED_OVERLAP) /* 2) */
         return;                       /* small = ok */
 
-    /* 3)  decide who is “pushing” ------------------------------- */
+    /* 3)  decide who is â€œpushingâ€ ------------------------------- */
     bool p1Right = p1->velocity_x > 0;
     bool p1Left = p1->velocity_x < 0;
     bool p2Right = p2->velocity_x > 0;
@@ -143,7 +143,7 @@ void collision(SingleFight *fight, Player *p1, Enemy *p2)
         p2->x += (p2->x < p1->x ? -push : push);
         p2->velocity_x = 0;
     }
-    /* same dir & both moving is allowed – already nudged enough */
+    /* same dir & both moving is allowed â€“ already nudged enough */
 
     /* 4)  arena limits ----------------------------------------- */
     if (p1->x < 0)
@@ -167,9 +167,9 @@ void combat(SingleFight *fight, Player *p1, Enemy *p2)
     if (fight->fighter1->is_dead || fight->fighter2->is_dead)
         return;
 
-    if (!SDL_HasIntersection(&fight->fighter1->hitbox,
-                             &fight->fighter2->hitbox))
-        return;
+    // if (!SDL_HasIntersection(&fight->fighter1->hitbox,
+    //                          &fight->fighter2->hitbox))
+    //     return;
 
     /* -------- P1 attacks P2 ----------------------------------- */
     if (p1->is_attacking &&
@@ -180,7 +180,7 @@ void combat(SingleFight *fight, Player *p1, Enemy *p2)
                        ((p1->x < p2->x && p2->direction == L) ||
                         (p1->x > p2->x && p2->direction == R));
 
-        p1->is_attacking = false; /* one swing → done */
+        p1->is_attacking = false; /* one swing â†’ done */
 
         if (blocked)
         {
@@ -305,12 +305,15 @@ void fighter1_state(Warrior *fighter, Player *player, Uint32 delta_time)
     Uint32 current_time = SDL_GetTicks();
 
     // Handle hurt animation
-    if (fighter->is_hurt && player->state == PLAYER_HURT)
+    if (fighter->is_hurt)
     {
         if (current_time - fighter->hurt_start_time >= HURT_ANIMATION_DURATION)
         {
             fighter->is_hurt = false;
-            set_player_state(player, PLAYER_IDLE);
+            if (player->state == PLAYER_HURT)
+            {
+                set_player_state(player, PLAYER_IDLE);
+            }
         }
     }
 
@@ -331,12 +334,15 @@ void update_enemy_state(Warrior *fighter, Enemy *player, Uint32 delta_time)
     Uint32 current_time = SDL_GetTicks();
 
     // Handle hurt animation
-    if (fighter->is_hurt && player->state == ENEMY_HURT)
+    if (fighter->is_hurt)
     {
         if (current_time - fighter->hurt_start_time >= HURT_ANIMATION_DURATION)
         {
             fighter->is_hurt = false;
-            set_enemy_state(player, ENEMY_IDLE);
+            if (player->state == ENEMY_HURT)
+            {
+                set_enemy_state(player, ENEMY_IDLE);
+            }
         }
     }
 

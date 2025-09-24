@@ -9,8 +9,8 @@
 // Fight system constants
 #define MAX_HEALTH 100
 #define ATTACK_DAMAGE 5
-#define HURT_ANIMATION_DURATION 500   // milliseconds
-#define DEATH_ANIMATION_DURATION 1000 // milliseconds
+#define HURT_ANIMATION_DURATION 300   // milliseconds
+#define DEATH_ANIMATION_DURATION 500 // milliseconds
 #define PLAYER_COLLISION_OFFSET 50    // pixels between players when colliding
 
 // Fighter structure to track combat state

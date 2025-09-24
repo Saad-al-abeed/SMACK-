@@ -2,47 +2,58 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <math.h>
-#define ALLOWED_OVERLAP 80 // pixels
+#include <stdbool.h>
+
+#define ALLOWED_OVERLAP 80 /* pixels */
+
+/* Helper: detect slide state to zero-height hitbox */
+static bool is_player_sliding(const Player *p) { return p->state == PLAYER_SLIDE; }
+static bool is_player2_sliding(const Player2 *p) { return p->state == PLAYER2_SLIDE; }
+
+/* Helper: down-attack hit check (aerial, vertical strike) */
+static bool down_attack_hits_player1(Player *attacker, Player2 *defender)
+{
+    if (attacker->state != PLAYER_DOWN_ATTACK)
+        return false;
+    if (attacker->on_ground)
+        return false;
+    float dx = fabsf(attacker->x - defender->x);
+    /* PLACEHOLDER tuning: narrow x window, attacker above defender */
+    return (dx <= 120.0f && attacker->y <= defender->y);
+}
+static bool down_attack_hits_player2(Player2 *attacker, Player *defender)
+{
+    if (attacker->state != PLAYER2_DOWN_ATTACK)
+        return false;
+    if (attacker->on_ground)
+        return false;
+    float dx = fabsf(attacker->x - defender->x);
+    return (dx <= 120.0f && attacker->y <= defender->y);
+}
 
 MultiFight *create_multi_fight(void)
 {
     MultiFight *fight = (MultiFight *)malloc(sizeof(MultiFight));
     if (!fight)
     {
-        fprintf(stderr, "Failed to allocate memory for MultiFight\n");
+        fprintf(stderr, "Failed to allocate MultiFight\n");
         return NULL;
     }
 
-    // Create fighter 1
-    fight->fighter1 = (Fighter *)malloc(sizeof(Fighter));
-    if (!fight->fighter1)
-    {
-        free(fight);
-        return NULL;
-    }
-    fight->fighter1->health = MAX_HEALTH;
-    fight->fighter1->is_hurt = false;
-    fight->fighter1->is_dead = false;
-    fight->fighter1->hurt_start_time = 0;
-    fight->fighter1->death_start_time = 0;
-
-    // Create fighter 2
-    fight->fighter2 = (Fighter *)malloc(sizeof(Fighter));
-    if (!fight->fighter2)
+    fight->fighter1 = (Fighter *)calloc(1, sizeof(Fighter));
+    fight->fighter2 = (Fighter *)calloc(1, sizeof(Fighter));
+    if (!fight->fighter1 || !fight->fighter2)
     {
         free(fight->fighter1);
         free(fight);
         return NULL;
     }
+
+    fight->fighter1->health = MAX_HEALTH;
     fight->fighter2->health = MAX_HEALTH;
-    fight->fighter2->is_hurt = false;
-    fight->fighter2->is_dead = false;
-    fight->fighter2->hurt_start_time = 0;
-    fight->fighter2->death_start_time = 0;
 
     fight->fight_over = false;
     fight->winner = 0;
-
     return fight;
 }
 
@@ -50,50 +61,52 @@ void destroy_multi_fight(MultiFight *fight)
 {
     if (!fight)
         return;
-
-    if (fight->fighter1)
-        free(fight->fighter1);
-    if (fight->fighter2)
-        free(fight->fighter2);
+    free(fight->fighter1);
+    free(fight->fighter2);
     free(fight);
 }
 
 void update_multi_fight(MultiFight *fight, Player *player1, Player2 *player2, Uint32 delta_time)
 {
-    if (!fight || !player1 || !player2 || fight->fight_over)
+    if (!fight || !player1 || !player2)
         return;
 
-    // Update hitboxes based on player positions
+    /* Update hitboxes – zero height when sliding */
     fight->fighter1->hitbox.x = (int)player1->x;
     fight->fighter1->hitbox.y = (int)player1->y;
     fight->fighter1->hitbox.w = 250;
-    fight->fighter1->hitbox.h = 150;
+    fight->fighter1->hitbox.h = is_player_sliding(player1) ? 0 : 150;
 
     fight->fighter2->hitbox.x = (int)player2->x;
     fight->fighter2->hitbox.y = (int)player2->y;
     fight->fighter2->hitbox.w = 250;
-    fight->fighter2->hitbox.h = 150;
+    fight->fighter2->hitbox.h = is_player2_sliding(player2) ? 0 : 150;
 
-    // Handle collision between players
+    /* Don’t push around during slide (no vertical height) */
     handle_collision(fight, player1, player2);
 
-    // Handle combat
+    /* Combat */
     handle_combat(fight, player1, player2);
 
-    // Update fighter states
+    /* State timers: clear timed hurt */
     update_fighter1_state(fight->fighter1, player1, delta_time);
     update_fighter2_state(fight->fighter2, player2, delta_time);
 
-    // Check for fight over
-    if (fight->fighter1->is_dead && fight->winner == 0)
+    /* Check for deaths and trigger winner PRAY once */
+    if (!fight->fight_over)
     {
-        fight->winner = 2;
-        fight->fight_over = true;
-    }
-    else if (fight->fighter2->is_dead && fight->winner == 0)
-    {
-        fight->winner = 1;
-        fight->fight_over = true;
+        if (fight->fighter1->is_dead)
+        {
+            fight->fight_over = true;
+            fight->winner = 2;
+            set_player2_state(player2, PLAYER2_PRAY); /* play once, then to idle in player2.c */
+        }
+        else if (fight->fighter2->is_dead)
+        {
+            fight->fight_over = true;
+            fight->winner = 1;
+            set_player_state(player1, PLAYER_PRAY); /* play once, then to idle in player.c  */
+        }
     }
 }
 
@@ -102,24 +115,20 @@ void handle_collision(MultiFight *fight, Player *p1, Player2 *p2)
     SDL_Rect *b1 = &fight->fighter1->hitbox;
     SDL_Rect *b2 = &fight->fighter2->hitbox;
 
-    if (!SDL_HasIntersection(b1, b2)) /* 0) */
+    if (!SDL_HasIntersection(b1, b2))
         return;
 
-    /* 1)  x-overlap in pixels (positive) ------------------------ */
     int overlap_x;
     if (p1->x < p2->x)
-        overlap_x = (b1->x + b1->w) - b2->x; /* p1 left  */
+        overlap_x = (b1->x + b1->w) - b2->x;
     else
-        overlap_x = (b2->x + b2->w) - b1->x; /* p2 left  */
+        overlap_x = (b2->x + b2->w) - b1->x;
 
-    if (overlap_x <= ALLOWED_OVERLAP) /* 2) */
-        return;                       /* small = ok */
+    if (overlap_x <= ALLOWED_OVERLAP)
+        return;
 
-    /* 3)  decide who is “pushing” ------------------------------- */
-    bool p1Right = p1->velocity_x > 0;
-    bool p1Left = p1->velocity_x < 0;
-    bool p2Right = p2->velocity_x > 0;
-    bool p2Left = p2->velocity_x < 0;
+    bool p1Right = p1->velocity_x > 0, p1Left = p1->velocity_x < 0;
+    bool p2Right = p2->velocity_x > 0, p2Left = p2->velocity_x < 0;
 
     bool towards_each_other =
         (p1->x < p2->x && p1Right && p2Left) ||
@@ -128,38 +137,70 @@ void handle_collision(MultiFight *fight, Player *p1, Player2 *p2)
     float push = (float)(overlap_x - ALLOWED_OVERLAP);
 
     if (towards_each_other)
-    { /* both run in */
+    {
         p1->x += (p1->x < p2->x ? -push * 0.5f : push * 0.5f);
         p2->x += (p1->x < p2->x ? push * 0.5f : -push * 0.5f);
         p1->velocity_x = p2->velocity_x = 0;
     }
     else if (p1->velocity_x != 0 && p2->velocity_x == 0)
-    { /* p1 pushing */
+    {
         p1->x += (p1->x < p2->x ? -push : push);
         p1->velocity_x = 0;
     }
     else if (p2->velocity_x != 0 && p1->velocity_x == 0)
-    { /* p2 pushing */
+    {
         p2->x += (p2->x < p1->x ? -push : push);
         p2->velocity_x = 0;
     }
-    /* same dir & both moving is allowed – already nudged enough */
 
-    /* 4)  arena limits ----------------------------------------- */
     if (p1->x < 0)
         p1->x = 0;
     if (p2->x < 0)
         p2->x = 0;
-    int r1 = 1280 - 250;
-    if (p1->x > r1)
-        p1->x = r1;
-    int r2 = 1280 - 250;
-    if (p2->x > r2)
-        p2->x = r2;
+    int r = 1280 - 250;
+    if (p1->x > r)
+        p1->x = r;
+    if (p2->x > r)
+        p2->x = r;
 
-    /* sync hit-boxes */
     b1->x = (int)p1->x;
     b2->x = (int)p2->x;
+}
+
+/* Existing helpers (range + facing) with DOWN-ATTACK support added */
+static bool facing_player1(Player *a, Player2 *d)
+{
+    return (a->direction == FACING_RIGHT && a->x < d->x) ||
+           (a->direction == FACING_LEFT && a->x > d->x);
+}
+static bool facing_player2(Player2 *a, Player *d)
+{
+    return (a->direction == RIGHT && a->x < d->x) ||
+           (a->direction == LEFT && a->x > d->x);
+}
+
+bool check_player1_attack_hit(Player *attacker, Player2 *defender)
+{
+    float attack_range = 200.0f;
+    float distance = fabsf(attacker->x - defender->x);
+
+    if (down_attack_hits_player1(attacker, defender))
+        return true;
+
+    bool facing_correct = facing_player1(attacker, defender);
+    return (distance <= attack_range && facing_correct);
+}
+
+bool check_player2_attack_hit(Player2 *attacker, Player *defender)
+{
+    float attack_range = 200.0f;
+    float distance = fabsf(attacker->x - defender->x);
+
+    if (down_attack_hits_player2(attacker, defender))
+        return true;
+
+    bool facing_correct = facing_player2(attacker, defender);
+    return (distance <= attack_range && facing_correct);
 }
 
 void handle_combat(MultiFight *fight, Player *p1, Player2 *p2)
@@ -167,11 +208,7 @@ void handle_combat(MultiFight *fight, Player *p1, Player2 *p2)
     if (fight->fighter1->is_dead || fight->fighter2->is_dead)
         return;
 
-    if (!SDL_HasIntersection(&fight->fighter1->hitbox,
-                             &fight->fighter2->hitbox))
-        return;
-
-    /* -------- P1 attacks P2 ----------------------------------- */
+    /* P1 attacks P2 */
     if (p1->is_attacking &&
         !fight->fighter2->is_hurt && !fight->fighter2->is_dead &&
         check_player1_attack_hit(p1, p2))
@@ -180,13 +217,12 @@ void handle_combat(MultiFight *fight, Player *p1, Player2 *p2)
                        ((p1->x < p2->x && p2->direction == LEFT) ||
                         (p1->x > p2->x && p2->direction == RIGHT));
 
-        p1->is_attacking = false; /* one swing → done */
+        p1->is_attacking = false;
 
         if (blocked)
         {
-            fight->fighter1->is_hurt = true;
-            fight->fighter1->hurt_start_time = SDL_GetTicks();
-            set_player_state(p1, PLAYER_HURT);
+            /* NEW: block-hurt (no real hurt flag) */
+            set_player_state(p1, PLAYER_BLOCK_HURT);
         }
         else
         {
@@ -194,7 +230,7 @@ void handle_combat(MultiFight *fight, Player *p1, Player2 *p2)
         }
     }
 
-    /* -------- P2 attacks P1 ----------------------------------- */
+    /* P2 attacks P1 */
     if (p2->is_attacking &&
         !fight->fighter1->is_hurt && !fight->fighter1->is_dead &&
         check_player2_attack_hit(p2, p1))
@@ -207,57 +243,14 @@ void handle_combat(MultiFight *fight, Player *p1, Player2 *p2)
 
         if (blocked)
         {
-            fight->fighter2->is_hurt = true;
-            fight->fighter2->hurt_start_time = SDL_GetTicks();
-            set_player2_state(p2, PLAYER2_HURT);
+            /* NEW: block-hurt (no real hurt flag) */
+            set_player2_state(p2, PLAYER2_BLOCK_HURT);
         }
         else
         {
             apply_damage_to_player1(fight->fighter1, p1, ATTACK_DAMAGE);
         }
     }
-}
-
-bool check_player1_attack_hit(Player *attacker, Player2 *defender)
-{
-    // Simple range check - adjust the attack range as needed
-    float attack_range = 200.0f; // pixels
-    float distance = fabs(attacker->x - defender->x);
-
-    // Check if attacker is facing the defender
-    bool facing_correct = false;
-    if (attacker->direction == FACING_RIGHT && attacker->x < defender->x)
-    {
-        facing_correct = true;
-    }
-    else if (attacker->direction == FACING_LEFT && attacker->x > defender->x)
-    {
-        facing_correct = true;
-    }
-
-    // Attack hits if within range and facing correct direction
-    return (distance <= attack_range && facing_correct);
-}
-
-bool check_player2_attack_hit(Player2 *attacker, Player *defender)
-{
-    // Simple range check - adjust the attack range as needed
-    float attack_range = 200.0f; // pixels
-    float distance = fabs(attacker->x - defender->x);
-
-    // Check if attacker is facing the defender
-    bool facing_correct = false;
-    if (attacker->direction == RIGHT && attacker->x < defender->x)
-    {
-        facing_correct = true;
-    }
-    else if (attacker->direction == LEFT && attacker->x > defender->x)
-    {
-        facing_correct = true;
-    }
-
-    // Attack hits if within range and facing correct direction
-    return (distance <= attack_range && facing_correct);
 }
 
 void apply_damage_to_player1(Fighter *fighter, Player *player, int damage)
@@ -300,56 +293,33 @@ void apply_damage_to_player2(Fighter *fighter, Player2 *player, int damage)
     }
 }
 
+/* Timed hurt clear (don’t depend on render state) */
 void update_fighter1_state(Fighter *fighter, Player *player, Uint32 delta_time)
 {
-    Uint32 current_time = SDL_GetTicks();
-
-    // Handle hurt animation
-    if (fighter->is_hurt && player->state == PLAYER_HURT)
+    Uint32 now = SDL_GetTicks();
+    if (fighter->is_hurt)
     {
-        if (current_time - fighter->hurt_start_time >= HURT_ANIMATION_DURATION)
+        if (now - fighter->hurt_start_time >= HURT_ANIMATION_DURATION)
         {
             fighter->is_hurt = false;
-            set_player_state(player, PLAYER_IDLE);
+            if (player->state == PLAYER_HURT)
+                set_player_state(player, player->on_ground ? PLAYER_IDLE : PLAYER_JUMPING);
         }
     }
-
-    //Handle death animation
-    // if (fighter->is_dead && player->state == PLAYER_DEATH)
-    // {
-    //     // Check if death animation is complete
-    //     if (player->current_frame >= player->frame_count - 1)
-    //     {
-    //         player->current_frame = player->frame_count - 1;
-    //         return;
-    //     }
-    // }
 }
 
 void update_fighter2_state(Fighter *fighter, Player2 *player, Uint32 delta_time)
 {
-    Uint32 current_time = SDL_GetTicks();
-
-    // Handle hurt animation
-    if (fighter->is_hurt && player->state == PLAYER2_HURT)
+    Uint32 now = SDL_GetTicks();
+    if (fighter->is_hurt)
     {
-        if (current_time - fighter->hurt_start_time >= HURT_ANIMATION_DURATION)
+        if (now - fighter->hurt_start_time >= HURT_ANIMATION_DURATION)
         {
             fighter->is_hurt = false;
-            set_player2_state(player, PLAYER2_IDLE);
+            if (player->state == PLAYER2_HURT)
+                set_player2_state(player, player->on_ground ? PLAYER2_IDLE : PLAYER2_JUMPING);
         }
     }
-
-    // Handle death animation
-    // if (fighter->is_dead && player->state == PLAYER2_DEATH)
-    // {
-    //     // Check if death animation is complete
-    //     if (player->current_frame >= player->frame_count - 1)
-    //     {
-    //         player->current_frame = player->frame_count - 1;
-    //         return;
-    //     }
-    // }
 }
 
 void render_health_bars(SDL_Renderer *renderer, MultiFight *fight)
@@ -357,40 +327,25 @@ void render_health_bars(SDL_Renderer *renderer, MultiFight *fight)
     if (!fight || !renderer)
         return;
 
-    // Health bar dimensions
-    int bar_width = 400;
-    int bar_height = 30;
-    int bar_y = 20;
+    int bar_width = 400, bar_height = 30, bar_y = 20;
 
-    // Player 1 health bar (left side)
     SDL_Rect p1_bg = {20, bar_y, bar_width, bar_height};
     SDL_Rect p1_health = {20, bar_y, (bar_width * fight->fighter1->health) / MAX_HEALTH, bar_height};
 
-    // Background (red)
     SDL_SetRenderDrawColor(renderer, 100, 0, 0, 255);
     SDL_RenderFillRect(renderer, &p1_bg);
-
-    // Health (green)
     SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
     SDL_RenderFillRect(renderer, &p1_health);
-
-    // Border
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderDrawRect(renderer, &p1_bg);
 
-    // Player 2 health bar (right side)
     SDL_Rect p2_bg = {1280 - bar_width - 20, bar_y, bar_width, bar_height};
     SDL_Rect p2_health = {1280 - bar_width - 20, bar_y, (bar_width * fight->fighter2->health) / MAX_HEALTH, bar_height};
 
-    // Background (red)
     SDL_SetRenderDrawColor(renderer, 100, 0, 0, 255);
     SDL_RenderFillRect(renderer, &p2_bg);
-
-    // Health (green)
     SDL_SetRenderDrawColor(renderer, 0, 255, 0, 255);
     SDL_RenderFillRect(renderer, &p2_health);
-
-    // Border
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderDrawRect(renderer, &p2_bg);
 }
