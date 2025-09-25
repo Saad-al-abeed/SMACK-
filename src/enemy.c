@@ -3,6 +3,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+extern void sound__e_idle(void);
+extern void sound__e_walk(void);
+extern void sound__e_jump(void);
+extern void sound__e_atk(int);
+extern void sound__e_block(void);
+extern void sound__e_hurt(void);
+extern void sound__e_death(void);
+extern void sound__e_slide(void);
+extern void sound__e_block_hurt(void);
+extern void sound__e_pray(void);
+extern void sound__e_down_attack(void);
+
+
 /* Keep these consistent with player */
 #define GROUND_LEVEL 375
 #define ENEMY_HEIGHT 258
@@ -225,6 +238,22 @@ void set_enemy_state(Enemy *e, EnemyState s)
         e->dest_rect.w = (int)e->frame_width;
     }
     e->src_rect.x = 0;
+
+    /* === sound hook === */
+    switch (e->state) {
+        case ENEMY_IDLE:        sound__e_idle(); break;
+        case ENEMY_WALKING:     sound__e_walk(); break;
+        case ENEMY_JUMPING:     sound__e_jump(); break;
+        case ENEMY_ATTACKING:   sound__e_atk(e->current_attack); break;
+        case ENEMY_BLOCKING:    sound__e_block(); break;
+        case ENEMY_HURT:        sound__e_hurt(); break;
+        case ENEMY_DEATH:       sound__e_death(); break;
+        case ENEMY_SLIDE:       sound__e_slide(); break;
+        case ENEMY_BLOCK_HURT:  sound__e_block_hurt(); break;
+        case ENEMY_PRAY:        sound__e_pray(); break;
+        case ENEMY_DOWN_ATTACK: sound__e_down_attack(); break;
+        default: break;
+    }
 }
 
 void update_enemy(Enemy *e, Uint32 dt_ms)

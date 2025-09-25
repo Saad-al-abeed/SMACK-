@@ -3,6 +3,19 @@
 #include <stdio.h>
 #include <stdlib.h>
 
+extern void sound__p_idle(void);
+extern void sound__p_walk(void);
+extern void sound__p_jump(void);
+extern void sound__p_atk(int);
+extern void sound__p_block(void);
+extern void sound__p_hurt(void);
+extern void sound__p_death(void);
+extern void sound__p_slide(void);
+extern void sound__p_block_hurt(void);
+extern void sound__p_pray(void);
+extern void sound__p_down_attack(void);
+
+
 #define GROUND_LEVEL 375
 #define PLAYER_HEIGHT 258
 
@@ -526,4 +539,20 @@ void set_player_state(Player *player, PlayerState s)
         player->dest_rect.w = (int)player->frame_width;
     }
     player->src_rect.x = 0;
+
+    /* === sound hook === */
+    switch (player->state) {
+        case PLAYER_IDLE:        sound__p_idle(); break;
+        case PLAYER_WALKING:     sound__p_walk(); break;
+        case PLAYER_JUMPING:     sound__p_jump(); break;
+        case PLAYER_ATTACKING:   sound__p_atk(player->current_attack); break;
+        case PLAYER_BLOCKING:    sound__p_block(); break;
+        case PLAYER_HURT:        sound__p_hurt(); break;
+        case PLAYER_DEATH:       sound__p_death(); break;
+        case PLAYER_SLIDE:       sound__p_slide(); break;
+        case PLAYER_BLOCK_HURT:  sound__p_block_hurt(); break;
+        case PLAYER_PRAY:        sound__p_pray(); break;
+        case PLAYER_DOWN_ATTACK: sound__p_down_attack(); break;
+        default: break;
+    }
 }

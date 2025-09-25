@@ -4,6 +4,7 @@
 #include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <stdbool.h>
+#include "sound_api.h"
 
 #include "background.h"
 #include "player.h"
@@ -28,6 +29,65 @@ int main(int argc, char *argv[])
     }
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
     {
+
+        sound_system_init();
+
+        /* ---- MUSIC ---- */
+        sound_set_path(SK_BG_INTRO, "assets/sounds/fire.mp3");
+        sound_set_path(SK_BG_MAP1,  "assets/sounds/music/ambient.mp3");
+        sound_set_path(SK_BG_MAP2,  "assets/sounds/music/ambient.mp3");
+        sound_set_path(SK_BG_MAP3,  "assets/sounds/music/ambient.mp3");
+        sound_music_play_intro();
+
+        /* ---- UI ---- */
+        sound_set_path(SK_UI_HOVER, "assets/sounds/hover.wav");
+        sound_set_path(SK_UI_CLICK, "assets/sounds/button.mp3");
+
+        /* ---- PLAYER ---- */
+        sound_set_path(SK_P_IDLE,        "assets/sounds/idle.mp3");
+        sound_set_path(SK_P_WALK,        "assets/sounds/walk.mp3");
+        sound_set_path(SK_P_JUMP,        "assets/sounds/idle.mp3");
+        sound_set_path(SK_P_ATK1,        "assets/sounds/sword1.mp3");
+        sound_set_path(SK_P_ATK2,        "assets/sounds/sword2.mp3");
+        sound_set_path(SK_P_ATK3,        "assets/sounds/sword3.mp3");
+        sound_set_path(SK_P_BLOCK,       "assets/sounds/block.mp3");
+        sound_set_path(SK_P_HURT,        "assets/sounds/lighthurt.mp3");
+        sound_set_path(SK_P_DEATH,       "assets/sounds/death.mp3");
+        sound_set_path(SK_P_SLIDE,       "assets/sounds/idle.mp3");
+        sound_set_path(SK_P_BLOCK_HURT,  "assets/sounds/block.p3");
+        sound_set_path(SK_P_PRAY,        "assets/sounds/idle.mp3");
+        sound_set_path(SK_P_DOWN_ATK,    "assets/sounds/block.mp3");
+
+        /* ---- PLAYER2 ---- */
+        sound_set_path(SK_P2_IDLE, "assets/sounds/idle.mp3");
+        sound_set_path(SK_P2_WALK, "assets/sounds/walk.mp3");
+        sound_set_path(SK_P2_JUMP, "assets/sounds/idle.mp3");
+        sound_set_path(SK_P2_ATK1, "assets/sounds/sword1.mp3");
+        sound_set_path(SK_P2_ATK2, "assets/sounds/sword2.mp3");
+        sound_set_path(SK_P2_ATK3, "assets/sounds/sword3.mp3");
+        sound_set_path(SK_P2_BLOCK, "assets/sounds/block.mp3");
+        sound_set_path(SK_P2_HURT, "assets/sounds/lighthurt.mp3");
+        sound_set_path(SK_P2_DEATH, "assets/sounds/death.mp3");
+        sound_set_path(SK_P2_SLIDE, "assets/sounds/idle.mp3");
+        sound_set_path(SK_P2_BLOCK_HURT, "assets/sounds/block.p3");
+        sound_set_path(SK_P2_PRAY, "assets/sounds/idle.mp3");
+        sound_set_path(SK_P2_DOWN_ATK, "assets/sounds/block.mp3");
+
+        /* ---- ENEMY ---- */
+        sound_set_path(SK_E_IDLE, "assets/sounds/idle.mp3");
+        sound_set_path(SK_E_WALK, "assets/sounds/walk.mp3");
+        sound_set_path(SK_E_JUMP, "assets/sounds/idle.mp3");
+        sound_set_path(SK_E_ATK1, "assets/sounds/sword1.mp3");
+        sound_set_path(SK_E_ATK2, "assets/sounds/sword2.mp3");
+        sound_set_path(SK_E_ATK3, "assets/sounds/sword3.mp3");
+        sound_set_path(SK_E_BLOCK, "assets/sounds/block.mp3");
+        sound_set_path(SK_E_HURT, "assets/sounds/lighthurt.mp3");
+        sound_set_path(SK_E_DEATH, "assets/sounds/death.mp3");
+        sound_set_path(SK_E_SLIDE, "assets/sounds/idle.mp3");
+        sound_set_path(SK_E_BLOCK_HURT, "assets/sounds/block.p3");
+        sound_set_path(SK_E_PRAY, "assets/sounds/idle.mp3");
+        sound_set_path(SK_E_DOWN_ATK, "assets/sounds/block.mp3");
+
         fprintf(stderr, "Mix_OpenAudio Error: %s\n", Mix_GetError());
         IMG_Quit();
         SDL_Quit();
@@ -319,5 +379,6 @@ int main(int argc, char *argv[])
     Mix_CloseAudio();
     IMG_Quit();
     SDL_Quit();
+    sound_system_shutdown();
     return 0;
 }

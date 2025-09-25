@@ -7,7 +7,7 @@
 /* Tunables */
 #define ATTACK_RANGE 200.0f   /* horizontal range for normal attacks */
 #define VERTICAL_RANGE 100.0f /* max vertical separation to allow any attack */
-#define ALLOWED_OVERLAP 150    /* push-back tolerance for movement collision */
+#define ALLOWED_OVERLAP 150   /* push-back tolerance for movement collision */
 #define HITBOX_W 250
 #define HITBOX_H 150
 
