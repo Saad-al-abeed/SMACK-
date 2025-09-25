@@ -53,7 +53,7 @@ Player2 *create_player2(SDL_Renderer *renderer, float x, float y)
     p->block_hurt_texture = load_texture(renderer, "assets/textures/Final/blockhurt.bmp");
     p->pray_texture = load_texture(renderer, "assets/textures/Final/pray_h258_w516.bmp");
     p->down_attack_texture = load_texture(renderer, "assets/textures/Final/jmph258w516.bmp");
-    
+
     if (!p->idle_texture || !p->walking_texture || !p->jumping_texture ||
         !p->attack_texture || !p->attack2_texture || !p->attack3_texture ||
         !p->block_texture || !p->hurt_texture || !p->death_texture ||
@@ -116,18 +116,24 @@ void handle_player2_input(Player2 *p, const Uint8 *keystate)
 
     p->velocity_x = 0.0f;
 
-    bool busy_attack = p->is_attacking && (p->state == PLAYER2_ATTACKING || p->state == PLAYER2_DOWN_ATTACK);
+    bool busy_attack = p->is_attacking &&
+                       (p->state == PLAYER2_ATTACKING || p->state == PLAYER2_DOWN_ATTACK);
     bool busy_block = p->is_blocking || p->state == PLAYER2_BLOCKING;
 
-    /* Arrows for movement */
-    if (keystate[SDL_SCANCODE_LEFT] && !busy_attack && !busy_block)
+    /* Movement keys */
+    bool leftHeld = keystate[SDL_SCANCODE_LEFT];
+    bool rightHeld = keystate[SDL_SCANCODE_RIGHT];
+    bool movingHeld = leftHeld || rightHeld;
+
+    /* Horizontal movement */
+    if (leftHeld && !busy_attack && !busy_block)
     {
         p->velocity_x = -p->speed;
         p->direction = LEFT;
         if (p->on_ground && p->state != PLAYER2_SLIDE)
             set_player2_state(p, PLAYER2_WALKING);
     }
-    else if (keystate[SDL_SCANCODE_RIGHT] && !busy_attack && !busy_block)
+    else if (rightHeld && !busy_attack && !busy_block)
     {
         p->velocity_x = p->speed;
         p->direction = RIGHT;
@@ -140,7 +146,7 @@ void handle_player2_input(Player2 *p, const Uint8 *keystate)
             set_player2_state(p, PLAYER2_IDLE);
     }
 
-    /* Jump */
+    /* Jump (KP_ENTER) — unchanged */
     if (keystate[SDL_SCANCODE_KP_ENTER] && p->on_ground && !busy_attack && !busy_block)
     {
         p->velocity_y = p->jump_force;
@@ -148,23 +154,27 @@ void handle_player2_input(Player2 *p, const Uint8 *keystate)
         set_player2_state(p, PLAYER2_JUMPING);
     }
 
-    /* Ground attack cycle: Numpad 8 for example (keep your original if different) */
+    /* ===== If moving (Left/Right) is held, ignore UP (attack) and DOWN (block) ===== */
+
+    /* UP: attack (works on ground and in air), only when NOT moving */
     static bool up_pressed = false;
-    if (keystate[SDL_SCANCODE_UP] && !busy_attack && !busy_block && p->on_ground)
+    if (!movingHeld && keystate[SDL_SCANCODE_UP] && !busy_attack && !busy_block)
     {
         if (!up_pressed)
         {
             p->is_attacking = true;
             p->attack_start_time = SDL_GetTicks();
             p->current_attack = (p->current_attack + 1) % 3;
-            set_player2_state(p, PLAYER2_ATTACKING);
+            set_player2_state(p, PLAYER2_ATTACKING); /* shows attack even in air */
             up_pressed = true;
         }
     }
     else
-        up_pressed = false;
+    {
+        up_pressed = false; /* also clears while moving so no stale press fires */
+    }
 
-    /* NEW: Aerial straight-down attack with Numpad 0 */
+    /* Aerial straight-down attack (KP_0) — unchanged */
     static bool kp0_pressed = false;
     if (keystate[SDL_SCANCODE_KP_0] && !busy_attack && !busy_block && !p->on_ground)
     {
@@ -179,15 +189,17 @@ void handle_player2_input(Player2 *p, const Uint8 *keystate)
         }
     }
     else
+    {
         kp0_pressed = false;
+    }
 
-    /* Block while Down Arrow held */
-    if (keystate[SDL_SCANCODE_DOWN] && !busy_attack)
+    /* DOWN: block while held — only when NOT moving; works in air as well */
+    if (!movingHeld && keystate[SDL_SCANCODE_DOWN] && !busy_attack)
     {
         if (!p->is_blocking)
         {
             p->is_blocking = true;
-            set_player2_state(p, PLAYER2_BLOCKING);
+            set_player2_state(p, PLAYER2_BLOCKING); /* shows block even in air */
         }
     }
     else
@@ -195,12 +207,12 @@ void handle_player2_input(Player2 *p, const Uint8 *keystate)
         if (p->is_blocking)
         {
             p->is_blocking = false;
-            if (p->on_ground)
-                set_player2_state(p, PLAYER2_IDLE);
+            /* return to idle if grounded, jump anim if airborne */
+            set_player2_state(p, p->on_ground ? PLAYER2_IDLE : PLAYER2_JUMPING);
         }
     }
 
-    /* NEW: Slide on Numpad '+' (ground only) */
+    /* Slide on Numpad '+' (ground only) — unchanged */
     bool kp_plus = keystate[SDL_SCANCODE_KP_PLUS];
     if (kp_plus && p->on_ground && !busy_attack && !busy_block)
     {
@@ -214,9 +226,16 @@ void handle_player2_input(Player2 *p, const Uint8 *keystate)
             set_player2_state(p, PLAYER2_IDLE);
     }
 
-    if (!p->on_ground && p->state != PLAYER2_JUMPING &&
-        p->state != PLAYER2_DOWN_ATTACK && p->state != PLAYER2_HURT)
+    /* Keep jump anim while airborne, but DON'T override attack/block/down-attack/hurt */
+    if (!p->on_ground &&
+        p->state != PLAYER2_JUMPING &&
+        p->state != PLAYER2_DOWN_ATTACK &&
+        p->state != PLAYER2_HURT &&
+        p->state != PLAYER2_ATTACKING &&
+        p->state != PLAYER2_BLOCKING)
+    {
         set_player2_state(p, PLAYER2_JUMPING);
+    }
 }
 
 void update_player2(Player2 *p, Uint32 dt_ms)

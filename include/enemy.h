@@ -2,77 +2,102 @@
 #define ENEMY_H
 
 #include <SDL2/SDL.h>
-#include <stdbool.h>
-#include "player.h"
+#include <player.h>
 
-typedef enum
+#ifdef __cplusplus
+extern "C"
 {
-    ENEMY_IDLE,
-    ENEMY_WALKING,
-    ENEMY_JUMPING,
-    ENEMY_ATTACKING,
-    ENEMY_BLOCKING,
-    ENEMY_DEATH,
-    ENEMY_HURT
-} EnemyState;
+#endif
 
-typedef enum
-{
-    R,
-    L
-} EnemyDirection;
+    /* Match player's facing enum semantics */
+    typedef enum
+    {
+        L = 0,
+        R = 1
+    } EnemyDirection;
 
-typedef struct
-{
-    // Position and physics
-    float x, y;
-    float velocity_x, velocity_y;
-    float speed;
-    float jump_force;
-    float gravity;
-    int current_attack;
-    bool on_ground;
+    /* Mirror all player states (incl. new ones) */
+    typedef enum
+    {
+        ENEMY_IDLE = 0,
+        ENEMY_WALKING,
+        ENEMY_JUMPING,
+        ENEMY_ATTACKING,
+        ENEMY_BLOCKING,
+        ENEMY_HURT,
+        ENEMY_DEATH,
+        ENEMY_SLIDE,
+        ENEMY_BLOCK_HURT,
+        ENEMY_PRAY,
+        ENEMY_DOWN_ATTACK
+    } EnemyState;
 
-    // Animation
-    SDL_Texture *idle_texture;
-    SDL_Texture *walking_texture;
-    SDL_Texture *jumping_texture;
-    SDL_Texture *attack_texture;
-    SDL_Texture *attack2_texture;
-    SDL_Texture *attack3_texture;
-    SDL_Texture *block_texture;
-    SDL_Texture *hurt_texture;
-    SDL_Texture *death_texture;
+    typedef struct Enemy
+    {
+        /* --- Transform / physics --- */
+        float x, y;
+        float velocity_x, velocity_y;
+        float speed;
+        float jump_force;
+        float gravity;
+        int on_ground; /* bool-like */
 
-    SDL_Rect src_rect;
-    SDL_Rect dest_rect;
+        /* --- Facing & state --- */
+        EnemyDirection direction;
+        EnemyState state;
 
-    // Animation frames
-    int current_frame;
-    int frame_count;
-    float frame_width;
-    int frame_height;
-    Uint32 last_frame_time;
-    Uint32 frame_delay;
+        /* --- Combat flags & timers (mirror player) --- */
+        int is_attacking; /* bool-like */
+        int is_blocking;  /* bool-like */
+        Uint32 attack_start_time;
+        Uint32 attack_duration; /* how long a single attack anim lasts (ms) */
+        int current_attack;     /* 0/1/2 combo step */
 
-    // State
-    EnemyState state;
-    EnemyDirection direction;
+        /* --- Block-hurt timer (mirror player) --- */
+        Uint32 block_hurt_start_time;
+        Uint32 block_hurt_duration; /* ms */
 
-    // Combat
-    bool is_attacking;
-    bool is_blocking;
-    Uint32 attack_start_time;
-    Uint32 attack_duration;
-} Enemy;
+        /* --- Health / lifecycle (kept here so single/multi fight can read) --- */
+        int health;
+        int is_dead; /* bool-like */
+        Uint32 death_start_time;
 
-// Function declarations
-Enemy *create_enemy(SDL_Renderer *renderer, float x, float y);
+        /* --- Textures (mirror player assets) --- */
+        SDL_Texture *idle_texture;
+        SDL_Texture *walking_texture;
+        SDL_Texture *jumping_texture;
+        SDL_Texture *attack_texture;
+        SDL_Texture *attack2_texture;
+        SDL_Texture *attack3_texture;
+        SDL_Texture *block_texture;
+        SDL_Texture *hurt_texture;
+        SDL_Texture *death_texture;
+        SDL_Texture *slide_texture;
+        SDL_Texture *block_hurt_texture;
+        SDL_Texture *pray_texture;
+        SDL_Texture *down_attack_texture;
 
-void destroy_enemy(Enemy *enemy);
-void handle_enemy_ai(Enemy *enemy, Player *player, float delta_time);
-void update_enemy(Enemy *enemy, Uint32 delta_time);
-void render_enemy(SDL_Renderer *renderer, Enemy *enemy);
-void set_enemy_state(Enemy *enemy, EnemyState new_state);
+        /* --- Animation slicing --- */
+        int frame_height;
+        float frame_width; /* single frame width in the spritesheet */
+        int frame_count;
+        int frame_delay; /* ms between frames */
+        int current_frame;
+        Uint32 last_frame_time;
 
-#endif // ENEMY_H
+        SDL_Rect src_rect;
+        SDL_Rect dest_rect;
+    } Enemy;
+
+    Enemy *create_enemy(SDL_Renderer *renderer, float x, float y);
+    void destroy_enemy(Enemy *enemy);
+    void handle_enemy_ai(Enemy *enemy, Player *player, Uint32 delta_time);
+    void set_enemy_state(Enemy *enemy, EnemyState s);
+    void update_enemy(Enemy *enemy, Uint32 delta_time); /* physics + anim timers only */
+    void render_enemy(SDL_Renderer *renderer, Enemy *enemy);
+
+#ifdef __cplusplus
+}
+#endif
+
+#endif /* ENEMY_H */

@@ -150,18 +150,25 @@ void handle_player_input(Player *player, const Uint8 *keystate)
     /* Reset horizontal velocity each frame; states will set as needed */
     player->velocity_x = 0.0f;
 
-    /* Movement (A/D) disabled when blocking or in down-attack */
-    bool busy_attack = player->is_attacking && (player->state == PLAYER_ATTACKING || player->state == PLAYER_DOWN_ATTACK);
+    /* Busy flags (unchanged) */
+    bool busy_attack = player->is_attacking &&
+                       (player->state == PLAYER_ATTACKING || player->state == PLAYER_DOWN_ATTACK);
     bool busy_block = player->is_blocking || player->state == PLAYER_BLOCKING;
 
-    if (keystate[SDL_SCANCODE_A] && !busy_attack && !busy_block)
+    /* Movement keys */
+    bool leftHeld = keystate[SDL_SCANCODE_A];
+    bool rightHeld = keystate[SDL_SCANCODE_D];
+    bool movingHeld = leftHeld || rightHeld;
+
+    /* Horizontal movement (unchanged) */
+    if (leftHeld && !busy_attack && !busy_block)
     {
         player->velocity_x = -player->speed;
         player->direction = FACING_LEFT;
         if (player->on_ground && player->state != PLAYER_SLIDE)
             set_player_state(player, PLAYER_WALKING);
     }
-    else if (keystate[SDL_SCANCODE_D] && !busy_attack && !busy_block)
+    else if (rightHeld && !busy_attack && !busy_block)
     {
         player->velocity_x = player->speed;
         player->direction = FACING_RIGHT;
@@ -174,7 +181,7 @@ void handle_player_input(Player *player, const Uint8 *keystate)
             set_player_state(player, PLAYER_IDLE);
     }
 
-    /* Jump */
+    /* Jump (SPACE) unchanged */
     if (keystate[SDL_SCANCODE_SPACE] && player->on_ground && !busy_attack && !busy_block)
     {
         player->velocity_y = player->jump_force;
@@ -182,23 +189,27 @@ void handle_player_input(Player *player, const Uint8 *keystate)
         set_player_state(player, PLAYER_JUMPING);
     }
 
-    /* Attack cycle with W (ground attacks) */
+    /* ===== Gating rule: if A/D is held, ignore W (attack) and S (block) ===== */
+
+    /* W: attack (now allowed both on ground and in air), but only if NOT moving */
     static bool w_was_pressed = false;
-    if (keystate[SDL_SCANCODE_W] && !busy_attack && !busy_block && player->on_ground)
+    if (!movingHeld && keystate[SDL_SCANCODE_W] && !busy_attack && !busy_block)
     {
         if (!w_was_pressed)
         {
             player->is_attacking = true;
             player->attack_start_time = SDL_GetTicks();
             player->current_attack = (player->current_attack + 1) % 3;
-            set_player_state(player, PLAYER_ATTACKING);
+            set_player_state(player, PLAYER_ATTACKING); /* will show attack even in air */
             w_was_pressed = true;
         }
     }
     else
-        w_was_pressed = false;
+    {
+        w_was_pressed = false; /* clear edge flag (also clears while moving) */
+    }
 
-    /* NEW: Aerial straight-down attack with F (must be in air) */
+    /* Aerial straight-down attack with F (unchanged) */
     static bool f_was_pressed = false;
     if (keystate[SDL_SCANCODE_F] && !busy_attack && !busy_block && !player->on_ground)
     {
@@ -207,22 +218,23 @@ void handle_player_input(Player *player, const Uint8 *keystate)
             player->is_attacking = true;
             player->attack_start_time = SDL_GetTicks();
             set_player_state(player, PLAYER_DOWN_ATTACK);
-            /* give a small downward boost to sell the dive */
             if (player->velocity_y < 600.0f)
-                player->velocity_y = 600.0f;
+                player->velocity_y = 600.0f; /* give it some oomph */
             f_was_pressed = true;
         }
     }
     else
+    {
         f_was_pressed = false;
+    }
 
-    /* Block while S held (unchanged) */
-    if (keystate[SDL_SCANCODE_S] && !busy_attack)
+    /* S: block while held — only when NOT moving; works in air as well */
+    if (!movingHeld && keystate[SDL_SCANCODE_S] && !busy_attack)
     {
         if (!player->is_blocking)
         {
             player->is_blocking = true;
-            set_player_state(player, PLAYER_BLOCKING);
+            set_player_state(player, PLAYER_BLOCKING); /* shows block even in air */
         }
     }
     else
@@ -230,18 +242,17 @@ void handle_player_input(Player *player, const Uint8 *keystate)
         if (player->is_blocking)
         {
             player->is_blocking = false;
-            if (player->on_ground)
-                set_player_state(player, PLAYER_IDLE);
+            /* return to idle if grounded, jump anim if airborne */
+            set_player_state(player, player->on_ground ? PLAYER_IDLE : PLAYER_JUMPING);
         }
     }
 
-    /* NEW: Slide on ALT (ground only) – while held */
+    /* Slide on ALT (ground only) – unchanged */
     bool alt_held = keystate[SDL_SCANCODE_LALT] || keystate[SDL_SCANCODE_RALT];
     if (alt_held && player->on_ground && !busy_attack && !busy_block)
     {
         if (player->state != PLAYER_SLIDE)
             set_player_state(player, PLAYER_SLIDE);
-        /* optional: a little glide in facing direction */
         player->velocity_x = (player->direction == FACING_RIGHT ? player->speed * 1.2f : -player->speed * 1.2f);
     }
     else
@@ -250,9 +261,13 @@ void handle_player_input(Player *player, const Uint8 *keystate)
             set_player_state(player, PLAYER_IDLE);
     }
 
-    /* Keep “in-air” anim fresh */
-    if (!player->on_ground && player->state != PLAYER_JUMPING &&
-        player->state != PLAYER_DOWN_ATTACK && player->state != PLAYER_HURT)
+    /* Keep "in-air" anim fresh, but DON'T override aerial attack/block/down-attack/hurt */
+    if (!player->on_ground &&
+        player->state != PLAYER_JUMPING &&
+        player->state != PLAYER_DOWN_ATTACK &&
+        player->state != PLAYER_HURT &&
+        player->state != PLAYER_ATTACKING &&
+        player->state != PLAYER_BLOCKING)
     {
         set_player_state(player, PLAYER_JUMPING);
     }
@@ -320,7 +335,7 @@ void update_player(Player *player, Uint32 delta_time)
                 player->current_frame++;
                 player->src_rect.x = player->current_frame * player->frame_width;
             }
-            /* freeze on last death frame; for PRAY we’ll drop to idle below */
+            /* freeze on last death frame; for PRAY weâ€™ll drop to idle below */
             if (player->state == PLAYER_PRAY && player->current_frame >= player->frame_count - 1)
                 set_player_state(player, PLAYER_IDLE);
         }

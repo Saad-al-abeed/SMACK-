@@ -3,553 +3,371 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-#define GROUND_LEVEL 375 // Adjust based on your map
+/* Keep these consistent with player */
+#define GROUND_LEVEL 375
 #define ENEMY_HEIGHT 258
 
+/* Placeholders – mirror the player defaults (tune to your assets) */
+#define DEFAULT_SPEED 450.0f
+#define DEFAULT_JUMP_FORCE -900.0f
+#define DEFAULT_GRAVITY 1500.0f
+
+#define DEFAULT_ATTACK_DURATION_MS 500
+#define DEFAULT_BLOCK_HURT_DURATION 300
+
+/* ---------- helpers ---------- */
 static SDL_Texture *load_texture(SDL_Renderer *renderer, const char *path)
 {
-    SDL_Surface *surface = SDL_LoadBMP(path);
-    if (!surface)
+    SDL_Surface *s = SDL_LoadBMP(path);
+    if (!s)
     {
-        fprintf(stderr, "Failed to load BMP %s: %s\n", path, SDL_GetError());
+        fprintf(stderr, "Enemy: failed to load BMP %s: %s\n", path, SDL_GetError());
         return NULL;
     }
-
-    // Set color key for transparency (assuming magenta is transparent)
-    SDL_SetColorKey(surface, SDL_TRUE, SDL_MapRGB(surface->format, 255, 0, 255));
-
-    SDL_Texture *texture = SDL_CreateTextureFromSurface(renderer, surface);
-    SDL_FreeSurface(surface);
-
-    if (!texture)
-    {
-        fprintf(stderr, "Failed to create texture from %s: %s\n", path, SDL_GetError());
-    }
-
-    return texture;
+    SDL_SetColorKey(s, SDL_TRUE, SDL_MapRGB(s->format, 255, 0, 255));
+    SDL_Texture *t = SDL_CreateTextureFromSurface(renderer, s);
+    SDL_FreeSurface(s);
+    if (!t)
+        fprintf(stderr, "Enemy: create texture from %s failed: %s\n", path, SDL_GetError());
+    return t;
 }
 
-// Helper function to get texture dimensions
-static void get_texture_dimensions(SDL_Texture *texture, int *w, int *h)
+static void tex_dims(SDL_Texture *t, int *w, int *h)
 {
-    SDL_QueryTexture(texture, NULL, NULL, w, h);
+    if (!t)
+    {
+        *w = *h = 0;
+        return;
+    }
+    SDL_QueryTexture(t, NULL, NULL, w, h);
 }
+
+/* ---------- public API ---------- */
 
 Enemy *create_enemy(SDL_Renderer *renderer, float x, float y)
 {
-    Enemy *enemy = (Enemy *)malloc(sizeof(Enemy));
-    if (!enemy)
-    {
-        fprintf(stderr, "Failed to allocate memory for enemy\n");
+    Enemy *e = (Enemy *)calloc(1, sizeof(Enemy));
+    if (!e)
         return NULL;
-    }
 
-    // Initialize position and physics
-    enemy->x = x;
-    enemy->y = y;
-    enemy->velocity_x = 0;
-    enemy->velocity_y = 0;
-    enemy->speed = 450.0f; // pixels per second
-    enemy->jump_force = -900.0f;
-    enemy->gravity = 1500.0f;
-    enemy->on_ground = false;
+    /* Physics */
+    e->x = x;
+    e->y = y;
+    e->velocity_x = 0.0f;
+    e->velocity_y = 0.0f;
+    e->speed = DEFAULT_SPEED;
+    e->jump_force = DEFAULT_JUMP_FORCE;
+    e->gravity = DEFAULT_GRAVITY;
+    e->on_ground = 0;
 
-    // Initialize all texture pointers to NULL first
-    enemy->idle_texture = NULL;
-    enemy->walking_texture = NULL;
-    enemy->jumping_texture = NULL;
-    enemy->attack_texture = NULL;
-    enemy->attack2_texture = NULL;
-    enemy->attack3_texture = NULL;
-    enemy->block_texture = NULL;
-    enemy->hurt_texture = NULL;  // Add this
-    enemy->death_texture = NULL; // Add this
+    /* Combat/anim timers */
+    e->is_attacking = 0;
+    e->is_blocking = 0;
+    e->attack_start_time = 0;
+    e->attack_duration = DEFAULT_ATTACK_DURATION_MS;
+    e->current_attack = 0;
+    e->block_hurt_start_time = 0;
+    e->block_hurt_duration = DEFAULT_BLOCK_HURT_DURATION;
 
-    // Load textures
-    enemy->idle_texture = load_texture(renderer, "assets/textures/Knight_1/Idle.bmp");
-    enemy->walking_texture = load_texture(renderer, "assets/textures/Knight_1/Run.bmp");
-    enemy->jumping_texture = load_texture(renderer, "assets/textures/Knight_1/Jump.bmp");
-    enemy->attack_texture = load_texture(renderer, "assets/textures/Knight_1/Attack 1.bmp");
-    enemy->attack2_texture = load_texture(renderer, "assets/textures/Knight_1/Attack 2.bmp");
-    enemy->attack3_texture = load_texture(renderer, "assets/textures/Knight_1/Attack 3.bmp");
-    enemy->block_texture = load_texture(renderer, "assets/textures/Knight_1/Protect.bmp");
-    enemy->hurt_texture = load_texture(renderer, "assets/textures/Knight_1/Hurt.bmp"); // Add this
-    enemy->death_texture = load_texture(renderer, "assets/textures/Knight_1/Dead.bmp");
+    e->health = 100;
+    e->is_dead = 0;
+    e->death_start_time = 0;
 
-    // Check if all textures loaded successfully
-    if (!enemy->idle_texture || !enemy->walking_texture || !enemy->jumping_texture ||
-        !enemy->attack_texture || !enemy->attack2_texture || !enemy->attack3_texture ||
-        !enemy->block_texture || !enemy->hurt_texture || !enemy->death_texture)
-    {
-        fprintf(stderr, "Failed to load one or more enemy textures\n");
-        destroy_enemy(enemy);
-        return NULL;
-    }
+    e->direction = R;
+    e->state = ENEMY_IDLE;
 
-    // Initialize animation
-    enemy->current_frame = 0;
-    enemy->frame_height = ENEMY_HEIGHT;
-    enemy->last_frame_time = SDL_GetTicks();
+    /* --- Load textures (placeholder paths; mirror your player paths) --- */
+    e->idle_texture = load_texture(renderer, "assets/textures/Final/Idle_h258_w516.bmp");
+    e->walking_texture = load_texture(renderer, "assets/textures/Final/Run_h258_w516.bmp");
+    e->jumping_texture = load_texture(renderer, "assets/textures/Final/nor_jmp_h258_w516.bmp");
+    e->attack_texture = load_texture(renderer, "assets/textures/Final/atk1.bmp");
+    e->attack2_texture = load_texture(renderer, "assets/textures/Final/atk3.bmp");
+    e->attack3_texture = load_texture(renderer, "assets/textures/Final/atk4.bmp");
+    e->block_texture = load_texture(renderer, "assets/textures/Final/crouch_idle-sheet.bmp");
+    e->hurt_texture = load_texture(renderer, "assets/textures/Final/Hurt-sheet.bmp"); // Add this
+    e->death_texture = load_texture(renderer, "assets/textures/Final/Dth_h258_w516.bmp");
+    e->slide_texture = load_texture(renderer, "assets/textures/Final/Slide-sheet.bmp");
+    e->block_hurt_texture = load_texture(renderer, "assets/textures/Final/blockhurt.bmp");
+    e->pray_texture = load_texture(renderer, "assets/textures/Final/pray_h258_w516.bmp");
+    e->down_attack_texture = load_texture(renderer, "assets/textures/Final/jmph258w516.bmp");
 
-    // Get initial frame width from idle texture
-    int texture_width, texture_height;
-    get_texture_dimensions(enemy->idle_texture, &texture_width, &texture_height);
-    enemy->frame_width = texture_width / 1; // Idle has 4 frames
-    enemy->frame_count = 1;
-    enemy->frame_delay = 150;
+    /* Basic anim setup from idle */
+    e->frame_height = ENEMY_HEIGHT;
+    e->current_frame = 0;
+    e->last_frame_time = SDL_GetTicks();
 
-    // Initialize rectangles
-    enemy->src_rect.x = 0;
-    enemy->src_rect.y = 0;
-    enemy->src_rect.w = enemy->frame_width;
-    enemy->src_rect.h = enemy->frame_height;
+    int tw = 0, th = 0;
+    tex_dims(e->idle_texture, &tw, &th);
+    e->frame_count = (tw > 0) ? 6 : 1; /* placeholder; you’ll match to player */
+    e->frame_delay = 100;
+    e->frame_width = (e->frame_count > 0) ? (float)tw / (float)e->frame_count : (float)tw;
 
-    enemy->dest_rect.x = (int)x;
-    enemy->dest_rect.y = (int)y;
-    enemy->dest_rect.w = enemy->frame_width;
-    enemy->dest_rect.h = enemy->frame_height;
+    e->src_rect = (SDL_Rect){0, 0, (int)e->frame_width, e->frame_height};
+    e->dest_rect = (SDL_Rect){(int)e->x, (int)e->y, (int)e->frame_width, e->frame_height};
 
-    // Initialize state
-    enemy->state = ENEMY_IDLE;
-    enemy->direction = L;
-    enemy->is_attacking = false;
-    enemy->is_blocking = false;
-    enemy->attack_start_time = 0;
-    enemy->attack_duration = 600; // milliseconds
-    enemy->current_attack = 0;    // Initialize attack counter
-
-    // Set initial state properly (this will set the correct frame_count and frame_delay)
-    set_enemy_state(enemy, ENEMY_IDLE);
-
-    return enemy;
+    set_enemy_state(e, ENEMY_IDLE);
+    return e;
 }
 
-void destroy_enemy(Enemy *enemy)
+void destroy_enemy(Enemy *e)
 {
-    if (!enemy)
+    if (!e)
         return;
-
-    if (enemy->idle_texture)
-        SDL_DestroyTexture(enemy->idle_texture);
-    if (enemy->walking_texture)
-        SDL_DestroyTexture(enemy->walking_texture);
-    if (enemy->jumping_texture)
-        SDL_DestroyTexture(enemy->jumping_texture);
-    if (enemy->attack_texture)
-        SDL_DestroyTexture(enemy->attack_texture);
-    if (enemy->attack2_texture)
-        SDL_DestroyTexture(enemy->attack2_texture);
-    if (enemy->attack3_texture)
-        SDL_DestroyTexture(enemy->attack3_texture);
-    if (enemy->block_texture)
-        SDL_DestroyTexture(enemy->block_texture);
-    if (enemy->hurt_texture)
-        SDL_DestroyTexture(enemy->hurt_texture); // Add this
-    if (enemy->death_texture)
-        SDL_DestroyTexture(enemy->death_texture); // Add this
-
-    free(enemy);
+    SDL_Texture **txs[] = {
+        &e->idle_texture, &e->walking_texture, &e->jumping_texture,
+        &e->attack_texture, &e->attack2_texture, &e->attack3_texture,
+        &e->block_texture, &e->hurt_texture, &e->death_texture,
+        &e->slide_texture, &e->block_hurt_texture, &e->pray_texture, &e->down_attack_texture};
+    for (size_t i = 0; i < sizeof(txs) / sizeof(txs[0]); ++i)
+        if (*txs[i])
+            SDL_DestroyTexture(*txs[i]);
+    free(e);
 }
 
-void handle_enemy_ai(Enemy *enemy, Player *player, float delta_time)
+void handle_enemy_ai(Enemy *enemy, Player *player, Uint32 delta_time)
 {
-    if (!enemy || !player || enemy->state == ENEMY_HURT || enemy->state == ENEMY_DEATH)
-        return;
-
-    // AI decision cooldown to prevent too frequent decisions
-    static Uint32 last_decision_time = 0;
-    Uint32 current_time = SDL_GetTicks();
-
-    // Make decisions every 100-300ms
-    if (current_time - last_decision_time < 100)
-        return;
-
-    // Calculate distance and direction to player
-    float dx = player->x - enemy->x;
-    float dy = player->y - enemy->y;
-    float distance = sqrtf(dx * dx + dy * dy);
-
-    // Determine if player is to the left or right
-    enemy->direction = (dx < 0) ? L : R;
-
-    // Reset velocity if not already moving
-    if (!enemy->is_attacking && !enemy->is_blocking)
-        enemy->velocity_x = 0;
-
-    // AI State Machine with probability-based decisions
-    float random_val = (float)rand() / RAND_MAX; // 0.0 to 1.0
-
-    // Define AI behavior thresholds
-    const float AGGRESSION_FACTOR = 1.0f; // Higher = more aggressive
-    const float DEFENSE_FACTOR = 1.0f;    // Higher = more defensive
-    const float MOBILITY_FACTOR = 1.0f;   // Higher = more mobile
-
-    // Combat range thresholds
-    const float MELEE_RANGE = 80.0f;
-    const float MEDIUM_RANGE = 200.0f;
-    const float FAR_RANGE = 400.0f;
-
-    // DEFENSIVE BEHAVIOR - Check if should block
-    if (player->is_attacking && distance < MELEE_RANGE * 1.5f)
-    {
-        if (random_val < DEFENSE_FACTOR && !enemy->is_attacking)
-        {
-            enemy->is_blocking = true;
-            set_enemy_state(enemy, ENEMY_BLOCKING);
-            last_decision_time = current_time;
-            return;
-        }
-    }
-    else if (enemy->is_blocking)
-    {
-        // Stop blocking when player stops attacking
-        enemy->is_blocking = false;
-        set_enemy_state(enemy, ENEMY_IDLE);
-    }
-
-    // OFFENSIVE BEHAVIOR - Attack when in range
-    if (distance < MELEE_RANGE && !enemy->is_attacking && !enemy->is_blocking)
-    {
-        if (random_val < AGGRESSION_FACTOR)
-        {
-            enemy->is_attacking = true;
-            enemy->attack_start_time = SDL_GetTicks();
-            enemy->current_attack = rand() % 3; // Random attack pattern
-            set_enemy_state(enemy, ENEMY_ATTACKING);
-            last_decision_time = current_time;
-            return;
-        }
-    }
-
-    // MOVEMENT BEHAVIOR
-    if (!enemy->is_attacking && !enemy->is_blocking)
-    {
-        // Close distance if too far
-        if (distance > MEDIUM_RANGE)
-        {
-            if (random_val < MOBILITY_FACTOR)
-            {
-                // Move towards player
-                enemy->velocity_x = (dx > 0) ? enemy->speed : -enemy->speed;
-                if (enemy->on_ground)
-                    set_enemy_state(enemy, ENEMY_WALKING);
-            }
-        }
-        // Maintain optimal combat distance
-        else if (distance > MELEE_RANGE && distance < MEDIUM_RANGE)
-        {
-            if (random_val < MOBILITY_FACTOR * 0.8f)
-            {
-                // Approach cautiously
-                enemy->velocity_x = (dx > 0) ? enemy->speed * 0.7f : -enemy->speed * 0.7f;
-                if (enemy->on_ground)
-                    set_enemy_state(enemy, ENEMY_WALKING);
-            }
-        }
-        // Back away if too close (defensive maneuver)
-        else if (distance < MELEE_RANGE * 0.5f)
-        {
-            if (random_val < (1.0f - AGGRESSION_FACTOR))
-            {
-                // Move away from player
-                enemy->velocity_x = (dx > 0) ? -enemy->speed : enemy->speed;
-                if (enemy->on_ground)
-                    set_enemy_state(enemy, ENEMY_WALKING);
-            }
-        }
-
-        // JUMPING BEHAVIOR
-        // Jump to reach player if they're higher
-        if (dy < -50 && enemy->on_ground && random_val < MOBILITY_FACTOR)
-        {
-            enemy->velocity_y = enemy->jump_force;
-            enemy->on_ground = false;
-            set_enemy_state(enemy, ENEMY_JUMPING);
-        }
-        // Dodge jump - occasionally jump to avoid attacks
-        else if (player->is_attacking && distance < MEDIUM_RANGE && enemy->on_ground)
-        {
-            if (random_val < MOBILITY_FACTOR * 0.3f)
-            {
-                enemy->velocity_y = enemy->jump_force;
-                enemy->on_ground = false;
-                set_enemy_state(enemy, ENEMY_JUMPING);
-
-                // Also move backward while jumping
-                enemy->velocity_x = (dx > 0) ? -enemy->speed : enemy->speed;
-            }
-        }
-    }
-
-    // Return to idle if not doing anything
-    if (enemy->velocity_x == 0 && enemy->on_ground &&
-        !enemy->is_attacking && !enemy->is_blocking &&
-        enemy->state == ENEMY_WALKING)
-    {
-        set_enemy_state(enemy, ENEMY_IDLE);
-    }
-
-    // Handle air state
-    if (!enemy->on_ground && enemy->state != ENEMY_JUMPING &&
-        !enemy->is_attacking && !enemy->is_blocking)
-    {
-        set_enemy_state(enemy, ENEMY_JUMPING);
-    }
-
-    last_decision_time = current_time;
+    //paste your code here
 }
 
-void update_enemy(Enemy *enemy, Uint32 delta_time)
+void set_enemy_state(Enemy *e, EnemyState s)
 {
-    if (!enemy)
+    if (!e)
+        return;
+    if (e->state == s && s != ENEMY_ATTACKING && s != ENEMY_DOWN_ATTACK)
         return;
 
-    float dt = delta_time / 1000.0f; // Convert to seconds
+    e->state = s;
+    e->current_frame = 0;
+    e->last_frame_time = SDL_GetTicks();
 
-    // Update position
-    enemy->x += enemy->velocity_x * dt;
-    enemy->y += enemy->velocity_y * dt;
+    SDL_Texture *t = NULL;
+    int tw = 0, th = 0;
 
-    // Apply gravity
-    if (!enemy->on_ground)
+    /* Mirror the player's frame counts & delays (PLACEHOLDERS below; change to match player.c) */
+    switch (s)
     {
-        enemy->velocity_y += enemy->gravity * dt;
+    case ENEMY_IDLE:
+        t = e->idle_texture;
+        e->frame_count = 6;
+        e->frame_delay = 100;
+        break;
+    case ENEMY_WALKING:
+        t = e->walking_texture;
+        e->frame_count = 8;
+        e->frame_delay = 90;
+        break;
+    case ENEMY_JUMPING:
+        t = e->jumping_texture;
+        e->frame_count = 6;
+        e->frame_delay = 100;
+        break;
+
+    case ENEMY_ATTACKING:
+        t = (e->current_attack == 0 ? e->attack_texture : (e->current_attack == 1 ? e->attack2_texture : e->attack3_texture));
+        /* Adjust counts/delays per attack index to match player exactly */
+        if (e->current_attack == 1)
+        {
+            e->frame_count = 4;
+            e->frame_delay = 150;
+        }
+        else
+        {
+            e->frame_count = 6;
+            e->frame_delay = 80;
+        }
+        break;
+
+    case ENEMY_BLOCKING:
+        t = e->block_texture;
+        e->frame_count = 1;
+        e->frame_delay = 120;
+        break;
+    case ENEMY_HURT:
+        t = e->hurt_texture;
+        e->frame_count = 3;
+        e->frame_delay = 120;
+        break;
+    case ENEMY_DEATH:
+        t = e->death_texture;
+        e->frame_count = 6;
+        e->frame_delay = 120;
+        break;
+
+    /* New mirrored states */
+    case ENEMY_SLIDE:
+        t = e->slide_texture;
+        e->frame_count = 6;
+        e->frame_delay = 80;
+        break;
+    case ENEMY_BLOCK_HURT:
+        t = e->block_hurt_texture;
+        e->frame_count = 3;
+        e->frame_delay = 100;
+        e->block_hurt_start_time = SDL_GetTicks();
+        break;
+    case ENEMY_PRAY:
+        t = e->pray_texture;
+        e->frame_count = 6;
+        e->frame_delay = 120;
+        break;
+    case ENEMY_DOWN_ATTACK:
+        t = e->down_attack_texture;
+        e->frame_count = 6;
+        e->frame_delay = 80;
+        break;
     }
 
-    // Check ground collision (simple ground check)
-    if (enemy->y >= GROUND_LEVEL)
+    if (t)
     {
-        enemy->y = GROUND_LEVEL;
-        enemy->velocity_y = 0;
+        tex_dims(t, &tw, &th);
+        e->frame_width = (e->frame_count > 0) ? (float)tw / (float)e->frame_count : (float)tw;
+        e->src_rect.w = (int)e->frame_width;
+        e->dest_rect.w = (int)e->frame_width;
+    }
+    e->src_rect.x = 0;
+}
 
-        if (!enemy->on_ground) // Just landed
+void update_enemy(Enemy *e, Uint32 dt_ms)
+{
+    if (!e)
+        return;
+
+    float dt = dt_ms / 1000.0f;
+
+    /* integrate motion */
+    e->x += e->velocity_x * dt;
+    e->y += e->velocity_y * dt;
+
+    /* gravity */
+    if (!e->on_ground)
+        e->velocity_y += e->gravity * dt;
+
+    /* ground resolve */
+    if (e->y >= GROUND_LEVEL)
+    {
+        e->y = GROUND_LEVEL;
+        e->velocity_y = 0;
+        if (!e->on_ground)
         {
-            enemy->on_ground = true;
-            if (enemy->state == ENEMY_JUMPING)
-            {
-                set_enemy_state(enemy, ENEMY_IDLE);
-            }
+            e->on_ground = 1;
+            /* land from air-only states */
+            if (e->state == ENEMY_JUMPING || e->state == ENEMY_DOWN_ATTACK)
+                set_enemy_state(e, ENEMY_IDLE);
         }
     }
     else
     {
-        enemy->on_ground = false;
+        e->on_ground = 0;
     }
 
-    // Update attack state
-    if (enemy->is_attacking)
+    /* attack timer (mirror player timing exit) */
+    if (e->is_attacking)
     {
-        Uint32 current_time = SDL_GetTicks();
-        if (current_time - enemy->attack_start_time >= enemy->attack_duration)
+        Uint32 now = SDL_GetTicks();
+        if (now - e->attack_start_time >= e->attack_duration)
         {
-            enemy->is_attacking = false;
-            set_enemy_state(enemy, ENEMY_IDLE);
+            e->is_attacking = 0;
+            set_enemy_state(e, e->on_ground ? ENEMY_IDLE : ENEMY_JUMPING);
         }
     }
 
-    // Update animation
-    Uint32 current_time = SDL_GetTicks();
-    if (current_time - enemy->last_frame_time >= enemy->frame_delay)
+    /* block-hurt timer */
+    if (e->state == ENEMY_BLOCK_HURT)
     {
-        if (enemy->state == ENEMY_DEATH)
+        if (SDL_GetTicks() - e->block_hurt_start_time >= e->block_hurt_duration)
         {
-            /* Let the animation run once and then freeze                */
-            if (enemy->current_frame < enemy->frame_count - 1)
-            {
-                enemy->current_frame++;
-                enemy->src_rect.x = enemy->current_frame * enemy->frame_width;
-            }
-            /* nothing happens once we are on the last frame             */
+            set_enemy_state(e, e->on_ground ? ENEMY_IDLE : ENEMY_JUMPING);
         }
-        else if (enemy->state == ENEMY_ATTACKING)
-        {
-            if (enemy->current_frame < enemy->frame_count - 1)
-            {
-                enemy->current_frame++;
-            }
-            else
-            {
-                /* animation finished; if the combat code has already
-                   set is_attacking = false, drop back to idle         */
-                if (!enemy->is_attacking)
-                    set_enemy_state(enemy, ENEMY_IDLE);
-            }
-            enemy->src_rect.x = enemy->current_frame * enemy->frame_width;
-        }
-        else /* every other state keeps looping as usual                 */
-        {
-            enemy->current_frame = (enemy->current_frame + 1) % enemy->frame_count;
-            enemy->src_rect.x = enemy->current_frame * enemy->frame_width;
-        }
-
-        enemy->last_frame_time = current_time;
     }
 
-    // Update destination rectangle
-    enemy->dest_rect.x = (int)enemy->x;
-    enemy->dest_rect.y = (int)enemy->y;
-    enemy->dest_rect.w = enemy->frame_width;
-    enemy->dest_rect.h = enemy->frame_height;
+    /* advance animation frames */
+    Uint32 now = SDL_GetTicks();
+    if (now - e->last_frame_time >= (Uint32)e->frame_delay)
+    {
+        if (e->state == ENEMY_DEATH || e->state == ENEMY_PRAY)
+        {
+            if (e->current_frame < e->frame_count - 1)
+            {
+                e->current_frame++;
+                e->src_rect.x = e->current_frame * (int)e->frame_width;
+            }
+            /* Optional: auto-return from PRAY after one full playthrough */
+            if (e->state == ENEMY_PRAY && e->current_frame >= e->frame_count - 1)
+            {
+                set_enemy_state(e, ENEMY_IDLE);
+            }
+        }
+        else if (e->state == ENEMY_ATTACKING || e->state == ENEMY_DOWN_ATTACK)
+        {
+            if (e->current_frame < e->frame_count - 1)
+                e->current_frame++;
+            e->src_rect.x = e->current_frame * (int)e->frame_width;
+        }
+        else
+        {
+            e->current_frame = (e->current_frame + 1) % e->frame_count;
+            e->src_rect.x = e->current_frame * (int)e->frame_width;
+        }
+        e->last_frame_time = now;
+    }
 
-    // Keep enemy on screen
-    if (enemy->x < 0)
-        enemy->x = 0;
-    if (enemy->x > 1280 - enemy->frame_width)
-        enemy->x = 1280 - enemy->frame_width;
+    /* sync rects */
+    e->dest_rect.x = (int)e->x;
+    e->dest_rect.y = (int)e->y;
+    e->dest_rect.h = ENEMY_HEIGHT;
+
+    /* simple horizontal clamp (match player limits if you have them) */
+    if (e->x < -200)
+        e->x = -200;
+    if (e->x > 1280 + 200 - e->frame_width)
+        e->x = 1280 + 200 - e->frame_width;
 }
 
-void render_enemy(SDL_Renderer *renderer, Enemy *enemy)
+void render_enemy(SDL_Renderer *renderer, Enemy *e)
 {
-    if (!enemy || !renderer)
+    if (!renderer || !e)
         return;
 
-    SDL_Texture *current_texture = NULL;
-
-    // Select appropriate texture based on state
-    switch (enemy->state)
+    SDL_Texture *tex = NULL;
+    switch (e->state)
     {
     case ENEMY_IDLE:
-        current_texture = enemy->idle_texture;
+        tex = e->idle_texture;
         break;
     case ENEMY_WALKING:
-        current_texture = enemy->walking_texture;
+        tex = e->walking_texture;
         break;
     case ENEMY_JUMPING:
-        current_texture = enemy->jumping_texture;
+        tex = e->jumping_texture;
         break;
     case ENEMY_ATTACKING:
-        // Select attack texture based on current attack cycle
-        switch (enemy->current_attack)
-        {
-        case 0:
-            current_texture = enemy->attack_texture;
-            break;
-        case 1:
-            current_texture = enemy->attack2_texture;
-            break;
-        case 2:
-            current_texture = enemy->attack3_texture;
-            break;
-        }
+        tex = (e->current_attack == 0 ? e->attack_texture : (e->current_attack == 1 ? e->attack2_texture : e->attack3_texture));
         break;
     case ENEMY_BLOCKING:
-        current_texture = enemy->block_texture;
-        break;
-    case ENEMY_DEATH:
-        current_texture = enemy->death_texture;
+        tex = e->block_texture;
         break;
     case ENEMY_HURT:
-        current_texture = enemy->hurt_texture;
-        break;
-    }
-
-    if (current_texture == enemy->death_texture)
-    {
-        if (enemy->current_frame >= enemy->frame_count - 1)
-        {
-            enemy->current_frame = enemy->frame_count - 1;
-        } // last frame of death animation
-    }
-
-    if (!current_texture)
-    {
-        fprintf(stderr, "No texture available for current enemy state %d\n", enemy->state);
-        return;
-    }
-
-    // Render with flip based on direction
-    SDL_RendererFlip flip = (enemy->direction == L) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
-
-    if (SDL_RenderCopyEx(renderer, current_texture, &enemy->src_rect, &enemy->dest_rect,
-                         0, NULL, flip) != 0)
-    {
-        fprintf(stderr, "Failed to render enemy: %s\n", SDL_GetError());
-    }
-}
-
-void set_enemy_state(Enemy *enemy, EnemyState new_state)
-{
-    if (!enemy)
-        return;
-
-    // Only change state if it's different (except for attacking which can cycle)
-    if (enemy->state == new_state && new_state != ENEMY_ATTACKING)
-        return;
-
-    enemy->state = new_state;
-    enemy->current_frame = 0;                // Reset animation
-    enemy->last_frame_time = SDL_GetTicks(); // Reset animation timer
-
-    SDL_Texture *texture = NULL;
-    int texture_width, texture_height;
-
-    // Set frame count and delay based on the new state, and update frame width
-    switch (new_state)
-    {
-    case ENEMY_IDLE:
-        texture = enemy->idle_texture;
-        enemy->frame_count = 1;
-        enemy->frame_delay = 150; // Slower for idle
-        break;
-    case ENEMY_WALKING:
-        texture = enemy->walking_texture;
-        enemy->frame_count = 7;
-        enemy->frame_delay = 100;
-        break;
-    case ENEMY_JUMPING:
-        texture = enemy->jumping_texture;
-        enemy->frame_count = 6;
-        enemy->frame_delay = 100;
-        break;
-    case ENEMY_ATTACKING:
-        // Set frame count based on which attack animation
-        switch (enemy->current_attack)
-        {
-        case 0:
-            texture = enemy->attack_texture;
-            enemy->frame_count = 5; // Attack 1 has 5 frames
-            enemy->frame_delay = 100;
-            break;
-        case 1:
-            texture = enemy->attack2_texture;
-            enemy->frame_count = 4; // Attack 2 has 4 frames
-            enemy->frame_delay = 125;
-            break;
-        case 2:
-            texture = enemy->attack3_texture;
-            enemy->frame_count = 4; // Attack 3 has 4 frames
-            enemy->frame_delay = 125;
-            break;
-        }
-        break;
-    case ENEMY_BLOCKING:
-        texture = enemy->block_texture;
-        enemy->frame_count = 1; // Single frame for blocking
-        enemy->frame_delay = 100;
+        tex = e->hurt_texture;
         break;
     case ENEMY_DEATH:
-        texture = enemy->death_texture;
-        enemy->frame_count = 6; // Adjust based on your death animation frames
-        enemy->frame_delay = 150;
+        tex = e->death_texture;
         break;
-    case ENEMY_HURT:
-        texture = enemy->hurt_texture;
-        enemy->frame_count = 2; // Adjust based on your hurt animation frames
-        enemy->frame_delay = 50;
+    case ENEMY_SLIDE:
+        tex = e->slide_texture;
+        break;
+    case ENEMY_BLOCK_HURT:
+        tex = e->block_hurt_texture;
+        break;
+    case ENEMY_PRAY:
+        tex = e->pray_texture;
+        break;
+    case ENEMY_DOWN_ATTACK:
+        tex = e->down_attack_texture;
         break;
     }
+    if (!tex)
+        return;
 
-    // Update frame width based on the texture
-    if (texture)
-    {
-        get_texture_dimensions(texture, &texture_width, &texture_height);
-        enemy->frame_width = texture_width / enemy->frame_count;
-
-        // Update rectangles with new dimensions
-        enemy->src_rect.w = enemy->frame_width;
-        enemy->dest_rect.w = enemy->frame_width;
-    }
-
-    // Reset source rectangle to first frame
-    enemy->src_rect.x = 0;
+    SDL_RendererFlip flip = (e->direction == L) ? SDL_FLIP_HORIZONTAL : SDL_FLIP_NONE;
+    SDL_RenderCopyEx(renderer, tex, &e->src_rect, &e->dest_rect, 0, NULL, flip);
 }
