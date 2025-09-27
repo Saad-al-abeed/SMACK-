@@ -2,11 +2,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-extern void sound_ui_hover(void);
-extern void sound_ui_click(void);
-extern void sound_music_play_map(int which);
-extern void sound_music_stop(void);
-
 Background *create_background(SDL_Renderer *ren, const char *path,
                               int total_frames, Uint32 frame_delay)
 {

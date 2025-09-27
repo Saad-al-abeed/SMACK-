@@ -31,6 +31,8 @@ typedef struct
     Warrior *fighter2;
     bool fight_over;
     int winner; // 0 = no winner yet, 1 = player1, 2 = enemy
+    bool restart_requested;
+    Uint32 fight_end_time;
 } SingleFight;
 
 // Function declarations
@@ -46,5 +48,6 @@ void update_enemy_state(Warrior *fighter, Enemy *player, Uint32 delta_time);
 bool player1_attack_hit(Player *attacker, Enemy *defender);
 bool check_enemy_attack_hit(Enemy *attacker, Player *defender);
 void health_bars(SDL_Renderer *renderer, SingleFight *fight);
+void handle_single_fight_game_over_input(SingleFight *fight, const Uint8 *keystate);
 
 #endif // SINGLE_FIGHT_H

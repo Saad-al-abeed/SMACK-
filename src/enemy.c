@@ -3,19 +3,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-extern void sound__e_idle(void);
-extern void sound__e_walk(void);
-extern void sound__e_jump(void);
-extern void sound__e_atk(int);
-extern void sound__e_block(void);
-extern void sound__e_hurt(void);
-extern void sound__e_death(void);
-extern void sound__e_slide(void);
-extern void sound__e_block_hurt(void);
-extern void sound__e_pray(void);
-extern void sound__e_down_attack(void);
-
-
 /* Keep these consistent with player */
 #define GROUND_LEVEL 375
 #define ENEMY_HEIGHT 258
@@ -72,6 +59,13 @@ Enemy *create_enemy(SDL_Renderer *renderer, float x, float y)
     e->jump_force = DEFAULT_JUMP_FORCE;
     e->gravity = DEFAULT_GRAVITY;
     e->on_ground = 0;
+    e->x = x;
+    e->y = y;
+    e->speed = 350.0f;
+    e->gravity = 1500.0f;
+    e->attack_duration = 500; // ms
+    e->direction = L;
+    e->block_start_time = 0;
 
     /* Combat/anim timers */
     e->is_attacking = 0;
@@ -102,7 +96,8 @@ Enemy *create_enemy(SDL_Renderer *renderer, float x, float y)
     e->slide_texture = load_texture(renderer, "assets/textures/Final/Slide-sheet.bmp");
     e->block_hurt_texture = load_texture(renderer, "assets/textures/Final/blockhurt.bmp");
     e->pray_texture = load_texture(renderer, "assets/textures/Final/pray_h258_w516.bmp");
-    e->down_attack_texture = load_texture(renderer, "assets/textures/Final/jmph258w516.bmp");
+    e->down_attack_texture = load_texture(renderer, "assets/textures/jmph258w516.bmp");
+    e->reposition_texture = load_texture(renderer, "assets/textures/Final/Run_h258_w516.bmp");
 
     /* Basic anim setup from idle */
     e->frame_height = ENEMY_HEIGHT;
@@ -130,7 +125,7 @@ void destroy_enemy(Enemy *e)
         &e->idle_texture, &e->walking_texture, &e->jumping_texture,
         &e->attack_texture, &e->attack2_texture, &e->attack3_texture,
         &e->block_texture, &e->hurt_texture, &e->death_texture,
-        &e->slide_texture, &e->block_hurt_texture, &e->pray_texture, &e->down_attack_texture};
+        &e->slide_texture, &e->block_hurt_texture, &e->pray_texture, &e->down_attack_texture, &e->reposition_texture};
     for (size_t i = 0; i < sizeof(txs) / sizeof(txs[0]); ++i)
         if (*txs[i])
             SDL_DestroyTexture(*txs[i]);
@@ -139,7 +134,102 @@ void destroy_enemy(Enemy *e)
 
 void handle_enemy_ai(Enemy *enemy, Player *player, Uint32 delta_time)
 {
-    //paste your code here
+    // --- Initial checks for death, etc. remain the same ---
+    if (!enemy || !player || enemy->state == ENEMY_HURT || enemy->state == ENEMY_DEATH) {
+        enemy->velocity_x = 0;
+        return;
+    }
+    if (player->state == PLAYER_DEATH) {
+        enemy->velocity_x = 0;
+        set_enemy_state(enemy, ENEMY_IDLE);
+        return;
+    }
+
+    // --- Senses ---
+    float distance_x = player->x - enemy->x;
+    float abs_distance = fabs(distance_x);
+    enemy->direction = (distance_x > 0) ? R : L;
+    bool is_player_facing_enemy = ((player->direction == FACING_RIGHT && distance_x < 0) ||
+                                 (player->direction == FACING_LEFT && distance_x > 0));
+
+    // --- AI Behavior Constants ---
+    const int ATTACK_RANGE = 200;
+    const int REPOSITION_TRIGGER_DISTANCE = 550;
+
+    // --- NEW: Define ranges for our random values ---
+    const Uint32 MIN_REPOSITION_DURATION = 400;  // 0.4 seconds
+    const Uint32 MAX_REPOSITION_DURATION = 700;  // 0.7 seconds
+    const Uint32 MIN_REPOSITION_COOLDOWN = 2500; // 2.5 seconds
+    const Uint32 MAX_REPOSITION_COOLDOWN = 4000; // 4.0 seconds
+
+    // --- Priority 1: Handle Ongoing Timed Actions ---
+    if (enemy->is_attacking) {
+        if (SDL_GetTicks() - enemy->attack_start_time < enemy->attack_duration) {
+            enemy->velocity_x = 0;
+            return;
+        }
+        enemy->is_attacking = false;
+    }
+    
+    if (enemy->state == ENEMY_REPOSITIONING) {
+        // Use the duration we stored when the action began
+        if (SDL_GetTicks() - enemy->reposition_start_time < enemy->current_reposition_duration) {
+            enemy->velocity_x = (enemy->direction == R) ? -enemy->speed * 0.7f : enemy->speed * 0.7f;
+            return;
+        } else {
+            set_enemy_state(enemy, ENEMY_IDLE);
+            enemy->velocity_x = 0;
+            return;
+        }
+    }
+
+    // --- Priority 2: DEFEND ---
+    if (player->is_attacking && is_player_facing_enemy && abs_distance < ATTACK_RANGE + 50) {
+        enemy->velocity_x = 0;
+        set_enemy_state(enemy, ENEMY_BLOCKING);
+        return;
+    }
+
+    // --- Priority 3: ATTACK ---
+    bool player_is_vulnerable = (!player->is_blocking || !is_player_facing_enemy);
+    if (abs_distance <= ATTACK_RANGE && player_is_vulnerable) {
+        enemy->velocity_x = 0;
+        enemy->is_attacking = true;
+        enemy->current_attack = rand() % 3;
+        enemy->attack_start_time = SDL_GetTicks();
+        set_enemy_state(enemy, ENEMY_ATTACKING);
+        return;
+    }
+    
+    // --- Priority 4: DECIDE TO REPOSITION (NEW) ---
+    // If the player gets too close AND our reposition ability is not on cooldown...
+    Uint32 random_cooldown = (rand() % (MAX_REPOSITION_COOLDOWN - MIN_REPOSITION_COOLDOWN + 1)) + MIN_REPOSITION_COOLDOWN;
+
+    if (abs_distance < REPOSITION_TRIGGER_DISTANCE && (SDL_GetTicks() - enemy->last_reposition_time > random_cooldown)) {
+        // ...then start repositioning.
+        enemy->reposition_start_time = SDL_GetTicks();
+        enemy->last_reposition_time = enemy->reposition_start_time;
+
+
+        
+        // NEW: Calculate and store a random duration for THIS specific back-dash
+        enemy->current_reposition_duration = (rand() % (MAX_REPOSITION_DURATION - MIN_REPOSITION_DURATION + 1)) + MIN_REPOSITION_DURATION;
+
+        set_enemy_state(enemy, ENEMY_REPOSITIONING);
+        return;
+    }
+
+    // --- Priority 5: CHASE (Default Action) ---
+    // If no other actions were taken, chase the player.
+    // This now works because repositioning is a temporary state and won't block it forever.
+    if (abs_distance > ATTACK_RANGE) { // Only chase if outside of attack range
+        enemy->velocity_x = (enemy->direction == R) ? enemy->speed : -enemy->speed;
+        set_enemy_state(enemy, ENEMY_WALKING);
+    } else {
+        // If we are in attack range but can't attack (e.g., player is blocking), just stay idle.
+        enemy->velocity_x = 0;
+        set_enemy_state(enemy, ENEMY_IDLE);
+    }
 }
 
 void set_enemy_state(Enemy *e, EnemyState s)
@@ -161,11 +251,16 @@ void set_enemy_state(Enemy *e, EnemyState s)
     {
     case ENEMY_IDLE:
         t = e->idle_texture;
-        e->frame_count = 6;
+        e->frame_count = 8;
         e->frame_delay = 100;
         break;
     case ENEMY_WALKING:
         t = e->walking_texture;
+        e->frame_count = 8;
+        e->frame_delay = 90;
+        break;
+    case ENEMY_REPOSITIONING:
+        t = e->reposition_texture;
         e->frame_count = 8;
         e->frame_delay = 90;
         break;
@@ -238,22 +333,6 @@ void set_enemy_state(Enemy *e, EnemyState s)
         e->dest_rect.w = (int)e->frame_width;
     }
     e->src_rect.x = 0;
-
-    /* === sound hook === */
-    switch (e->state) {
-        case ENEMY_IDLE:        sound__e_idle(); break;
-        case ENEMY_WALKING:     sound__e_walk(); break;
-        case ENEMY_JUMPING:     sound__e_jump(); break;
-        case ENEMY_ATTACKING:   sound__e_atk(e->current_attack); break;
-        case ENEMY_BLOCKING:    sound__e_block(); break;
-        case ENEMY_HURT:        sound__e_hurt(); break;
-        case ENEMY_DEATH:       sound__e_death(); break;
-        case ENEMY_SLIDE:       sound__e_slide(); break;
-        case ENEMY_BLOCK_HURT:  sound__e_block_hurt(); break;
-        case ENEMY_PRAY:        sound__e_pray(); break;
-        case ENEMY_DOWN_ATTACK: sound__e_down_attack(); break;
-        default: break;
-    }
 }
 
 void update_enemy(Enemy *e, Uint32 dt_ms)
@@ -365,6 +444,9 @@ void render_enemy(SDL_Renderer *renderer, Enemy *e)
         break;
     case ENEMY_WALKING:
         tex = e->walking_texture;
+        break;
+    case ENEMY_REPOSITIONING:
+        tex = e->reposition_texture;
         break;
     case ENEMY_JUMPING:
         tex = e->jumping_texture;

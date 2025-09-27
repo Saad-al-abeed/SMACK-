@@ -4,17 +4,20 @@
 #include <SDL2/SDL_ttf.h>
 #include <stdio.h>
 #include <stdbool.h>
-#include "sound_api.h"
-
+#include <stdlib.h>
+#include <time.h>
+#include "sound.h"
 #include "background.h"
 #include "player.h"
 #include "player2.h"
 #include "multifight.h"
 #include "singlefight.h"
+#include "game_text.h" // ADDED: Include for text rendering
 
 /* ------------------------------------------------------------------------- */
 int main(int argc, char *argv[])
 {
+    srand(time(NULL));
     /* ---------- SDL / libraries initialisation ---------- */
     if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_AUDIO) != 0)
     {
@@ -29,78 +32,22 @@ int main(int argc, char *argv[])
     }
     if (Mix_OpenAudio(44100, MIX_DEFAULT_FORMAT, 2, 2048) < 0)
     {
-
-        sound_system_init();
-
-        /* ---- MUSIC ---- */
-        sound_set_path(SK_BG_INTRO, "assets/sounds/fire.mp3");
-        sound_set_path(SK_BG_MAP1,  "assets/sounds/music/ambient.mp3");
-        sound_set_path(SK_BG_MAP2,  "assets/sounds/music/ambient.mp3");
-        sound_set_path(SK_BG_MAP3,  "assets/sounds/music/ambient.mp3");
-        sound_music_play_intro();
-
-        /* ---- UI ---- */
-        sound_set_path(SK_UI_HOVER, "assets/sounds/hover.wav");
-        sound_set_path(SK_UI_CLICK, "assets/sounds/button.mp3");
-
-        /* ---- PLAYER ---- */
-        sound_set_path(SK_P_IDLE,        "assets/sounds/idle.mp3");
-        sound_set_path(SK_P_WALK,        "assets/sounds/walk.mp3");
-        sound_set_path(SK_P_JUMP,        "assets/sounds/idle.mp3");
-        sound_set_path(SK_P_ATK1,        "assets/sounds/sword1.mp3");
-        sound_set_path(SK_P_ATK2,        "assets/sounds/sword2.mp3");
-        sound_set_path(SK_P_ATK3,        "assets/sounds/sword3.mp3");
-        sound_set_path(SK_P_BLOCK,       "assets/sounds/block.mp3");
-        sound_set_path(SK_P_HURT,        "assets/sounds/lighthurt.mp3");
-        sound_set_path(SK_P_DEATH,       "assets/sounds/death.mp3");
-        sound_set_path(SK_P_SLIDE,       "assets/sounds/idle.mp3");
-        sound_set_path(SK_P_BLOCK_HURT,  "assets/sounds/block.p3");
-        sound_set_path(SK_P_PRAY,        "assets/sounds/idle.mp3");
-        sound_set_path(SK_P_DOWN_ATK,    "assets/sounds/block.mp3");
-
-        /* ---- PLAYER2 ---- */
-        sound_set_path(SK_P2_IDLE, "assets/sounds/idle.mp3");
-        sound_set_path(SK_P2_WALK, "assets/sounds/walk.mp3");
-        sound_set_path(SK_P2_JUMP, "assets/sounds/idle.mp3");
-        sound_set_path(SK_P2_ATK1, "assets/sounds/sword1.mp3");
-        sound_set_path(SK_P2_ATK2, "assets/sounds/sword2.mp3");
-        sound_set_path(SK_P2_ATK3, "assets/sounds/sword3.mp3");
-        sound_set_path(SK_P2_BLOCK, "assets/sounds/block.mp3");
-        sound_set_path(SK_P2_HURT, "assets/sounds/lighthurt.mp3");
-        sound_set_path(SK_P2_DEATH, "assets/sounds/death.mp3");
-        sound_set_path(SK_P2_SLIDE, "assets/sounds/idle.mp3");
-        sound_set_path(SK_P2_BLOCK_HURT, "assets/sounds/block.p3");
-        sound_set_path(SK_P2_PRAY, "assets/sounds/idle.mp3");
-        sound_set_path(SK_P2_DOWN_ATK, "assets/sounds/block.mp3");
-
-        /* ---- ENEMY ---- */
-        sound_set_path(SK_E_IDLE, "assets/sounds/idle.mp3");
-        sound_set_path(SK_E_WALK, "assets/sounds/walk.mp3");
-        sound_set_path(SK_E_JUMP, "assets/sounds/idle.mp3");
-        sound_set_path(SK_E_ATK1, "assets/sounds/sword1.mp3");
-        sound_set_path(SK_E_ATK2, "assets/sounds/sword2.mp3");
-        sound_set_path(SK_E_ATK3, "assets/sounds/sword3.mp3");
-        sound_set_path(SK_E_BLOCK, "assets/sounds/block.mp3");
-        sound_set_path(SK_E_HURT, "assets/sounds/lighthurt.mp3");
-        sound_set_path(SK_E_DEATH, "assets/sounds/death.mp3");
-        sound_set_path(SK_E_SLIDE, "assets/sounds/idle.mp3");
-        sound_set_path(SK_E_BLOCK_HURT, "assets/sounds/block.p3");
-        sound_set_path(SK_E_PRAY, "assets/sounds/idle.mp3");
-        sound_set_path(SK_E_DOWN_ATK, "assets/sounds/block.mp3");
-
         fprintf(stderr, "Mix_OpenAudio Error: %s\n", Mix_GetError());
         IMG_Quit();
         SDL_Quit();
         return 1;
     }
-    if (TTF_Init() < 0)
-    {
-        fprintf(stderr, "TTF_Init Error: %s\n", TTF_GetError());
+    
+    // MODIFIED: Replaced TTF_Init() with our new text_init() function
+    if (!text_init("assets/texts/Pixelify_Sans/static/PixelifySans-Medium.ttf", 48)) {
+        fprintf(stderr, "Failed to initialize text module.\n");
         Mix_CloseAudio();
         IMG_Quit();
         SDL_Quit();
         return 1;
     }
+
+    sound_init();
 
     /* ---------- window / renderer ---------- */
     SDL_Window *win = SDL_CreateWindow(
@@ -111,7 +58,7 @@ int main(int argc, char *argv[])
     if (!win)
     {
         fprintf(stderr, "SDL_CreateWindow Error: %s\n", SDL_GetError());
-        TTF_Quit();
+        text_quit(); // MODIFIED: Cleanup text module
         Mix_CloseAudio();
         IMG_Quit();
         SDL_Quit();
@@ -124,7 +71,7 @@ int main(int argc, char *argv[])
     {
         fprintf(stderr, "SDL_CreateRenderer Error: %s\n", SDL_GetError());
         SDL_DestroyWindow(win);
-        TTF_Quit();
+        text_quit(); // MODIFIED: Cleanup text module
         Mix_CloseAudio();
         IMG_Quit();
         SDL_Quit();
@@ -149,14 +96,14 @@ int main(int argc, char *argv[])
                                        "assets/textures/multiplayer_s.bmp");
 
     Button *map1_btn = create_button(ren, 280, 400,
-                                     "assets/textures/unselected-export.bmp",
-                                     "assets/textures/selected-export.bmp");
+                                     "assets/textures/map1us-export.bmp",
+                                     "assets/textures/map1s-export.bmp");
     Button *map2_btn = create_button(ren, 560, 400,
-                                     "assets/textures/unselected-export.bmp",
-                                     "assets/textures/selected-export.bmp");
+                                     "assets/textures/map2us-export.bmp",
+                                     "assets/textures/map2s-export.bmp");
     Button *map3_btn = create_button(ren, 840, 400,
-                                     "assets/textures/unselected-export.bmp",
-                                     "assets/textures/selected-export.bmp");
+                                     "assets/textures/map3us-export.bmp",
+                                     "assets/textures/map3s-export.bmp");
 
     /* ---------- game-state variables ---------- */
     Player *player = NULL;
@@ -167,7 +114,7 @@ int main(int argc, char *argv[])
 
     Background *current_background = bg;
     bool game_started = false;
-    bool is_multiplayer = false; /* NEW */
+    bool is_multiplayer = false;
 
     Uint32 last_time = SDL_GetTicks();
     Uint32 delta_time;
@@ -183,7 +130,7 @@ int main(int argc, char *argv[])
     /* ---------- main loop ---------- */
     SDL_Event e;
     int running = 1;
-
+    sound_play_music("menu");
     while (running)
     {
         /* delta-time calculation */
@@ -211,31 +158,61 @@ int main(int argc, char *argv[])
                 handle_button_event(map3_btn, &e);
         }
 
-        /* keyboard state */
         const Uint8 *keystate = SDL_GetKeyboardState(NULL);
-        if (player && game_started)
-            handle_player_input(player, keystate);
-        if (player2 && game_started)
-            handle_player2_input(player2, keystate);
-        if (!is_multiplayer && game_started && enemy)
-            handle_enemy_ai(enemy, player, delta_time);
 
-        /* background update */
+        // ADDED: Main game logic is now split between "fight ongoing" and "fight over"
+        bool fight_is_over = (is_multiplayer && mulfight && mulfight->fight_over) || (!is_multiplayer && sinfight && sinfight->fight_over);
+
+        if (game_started && !fight_is_over)
+        {
+            // --- LOGIC FOR WHEN FIGHT IS ONGOING ---
+            if (player) handle_player_input(player, keystate);
+            if (player2) handle_player2_input(player2, keystate);
+            if (enemy) handle_enemy_ai(enemy, player, delta_time);
+
+            if (player) update_player(player, delta_time);
+            if (player2) update_player2(player2, delta_time);
+            if (enemy) update_enemy(enemy, delta_time);
+
+            if (mulfight) update_multi_fight(mulfight, player, player2, delta_time);
+            if (sinfight) update_single_fight(sinfight, player, enemy, delta_time);
+        }
+        else if (game_started && fight_is_over)
+        { 
+            if (player) update_player(player, delta_time);
+            if (player2) update_player2(player2, delta_time);
+            if (enemy) update_enemy(enemy, delta_time); 
+            if (is_multiplayer && mulfight)
+            {
+                handle_multi_fight_game_over_input(mulfight, keystate);
+                if (mulfight->restart_requested)
+                {
+                    destroy_player(player);
+                    destroy_player2(player2);
+                    destroy_multi_fight(mulfight);
+                    player = create_player(ren, 50, 375);
+                    player2 = create_player2(ren, 800, 375);
+                    mulfight = create_multi_fight();
+                }
+            }
+            else if (!is_multiplayer && sinfight)
+            {
+                handle_single_fight_game_over_input(sinfight, keystate);
+                if (sinfight->restart_requested)
+                {
+                    destroy_player(player);
+                    destroy_enemy(enemy);
+                    destroy_single_fight(sinfight);
+                    player = create_player(ren, 50, 375);
+                    enemy = create_enemy(ren, 800, 375);
+                    sinfight = create_single_fight();
+                }
+            }
+        }
+
+        /* background update (always runs) */
         update_background(current_background);
-
-        /* players update */
-        if (player && game_started)
-            update_player(player, delta_time);
-        if (player2 && game_started)
-            update_player2(player2, delta_time);
-        if (enemy && game_started)
-            update_enemy(enemy, delta_time); /* NEW */
-
-        if (mulfight && game_started)
-            update_multi_fight(mulfight, player, player2, delta_time);
-        if (sinfight && !is_multiplayer && game_started)
-            update_single_fight(sinfight, player, enemy, delta_time);
-
+        
         /* ---------- menu navigation ---------- */
         if (play_button_visible && play_button_clicked(play))
         {
@@ -249,7 +226,7 @@ int main(int argc, char *argv[])
             single_play_button_visible = false;
             multi_play_button_visible = false;
             map1_btn_visible = map2_btn_visible = map3_btn_visible = true;
-            is_multiplayer = false; /* NEW */
+            is_multiplayer = false;
         }
 
         if (multi_play_button_visible && multi_play_button_clicked(multi_play))
@@ -257,110 +234,91 @@ int main(int argc, char *argv[])
             single_play_button_visible = false;
             multi_play_button_visible = false;
             map1_btn_visible = map2_btn_visible = map3_btn_visible = true;
-            is_multiplayer = true; /* NEW */
+            is_multiplayer = true;
         }
 
-        /* ---------- map 1 selection ---------- */
+        /* map selections now check for both modes */
         if (map1_btn_visible && map1_button_clicked(map1_btn))
         {
+            sound_play_music("map1");
             map1_btn_visible = map2_btn_visible = map3_btn_visible = false;
-            current_background = map1;
-            game_started = true;
-
-            if (!player)
-                player = create_player(ren, 100, 375);
-            if (is_multiplayer && !player2)
+            current_background = map1; game_started = true;
+            player = create_player(ren, 50, 375);
+            if (is_multiplayer) {
                 player2 = create_player2(ren, 800, 375);
-            if (!is_multiplayer && !enemy)
-                enemy = create_enemy(ren, 800, 375);          /* NEW */
-            if (!mulfight && is_multiplayer && player && player2) /* NEW */
                 mulfight = create_multi_fight();
-            if (!sinfight && !is_multiplayer && player && enemy) /* NEW */
+            } else {
+                enemy = create_enemy(ren, 800, 375);
                 sinfight = create_single_fight();
+            }
         }
-
-        /* ---------- map 2 selection ---------- */
         if (map2_btn_visible && map2_button_clicked(map2_btn))
         {
+            sound_play_music("map2");
             map1_btn_visible = map2_btn_visible = map3_btn_visible = false;
-            current_background = map2;
-            game_started = true;
-
-            if (!player)
-                player = create_player(ren, 100, 375);
-            if (is_multiplayer && !player2)
+            current_background = map2; game_started = true;
+            player = create_player(ren, 50, 375);
+            if (is_multiplayer) {
                 player2 = create_player2(ren, 800, 375);
-            if (!is_multiplayer && !enemy)
-                enemy = create_enemy(ren, 800, 375);             /* NEW */
-            if (!mulfight && is_multiplayer && player && player2) /* NEW */
                 mulfight = create_multi_fight();
-            if (!sinfight && !is_multiplayer && player && enemy) /* NEW */
+            } else {
+                enemy = create_enemy(ren, 800, 375);
                 sinfight = create_single_fight();
+            }
         }
-
-        /* ---------- map 3 selection ---------- */
         if (map3_btn_visible && map3_button_clicked(map3_btn))
         {
+            sound_play_music("map3");
             map1_btn_visible = map2_btn_visible = map3_btn_visible = false;
-            current_background = map3;
-            game_started = true;
-
-            if (!player)
-                player = create_player(ren, 100, 375);
-            if (is_multiplayer && !player2)
+            current_background = map3; game_started = true;
+            player = create_player(ren, 50, 375);
+            if (is_multiplayer) {
                 player2 = create_player2(ren, 800, 375);
-            if (!is_multiplayer && !enemy)
-                enemy = create_enemy(ren, 800, 375);             /* NEW */
-            if (!mulfight && is_multiplayer && player && player2) /* NEW */
                 mulfight = create_multi_fight();
-            if (!sinfight && !is_multiplayer && player && enemy) /* NEW */
+            } else {
+                enemy = create_enemy(ren, 800, 375);
                 sinfight = create_single_fight();
+            }
         }
 
         /* ---------- rendering ---------- */
         SDL_RenderClear(ren);
-
         render_background(ren, current_background);
 
-        if (play_button_visible)
-            render_button(ren, play);
-        if (single_play_button_visible)
-            render_button(ren, single_play);
-        if (multi_play_button_visible)
-            render_button(ren, multi_play);
-        if (map1_btn_visible)
-            render_button(ren, map1_btn);
-        if (map2_btn_visible)
-            render_button(ren, map2_btn);
-        if (map3_btn_visible)
-            render_button(ren, map3_btn);
+        if (game_started) {
+            sound_play_effects(player, player2, enemy);
+            if (player) render_player(ren, player);
+            if (player2) render_player2(ren, player2);
+            if (enemy) render_enemy(ren, enemy);
+            if (mulfight) render_health_bars(ren, mulfight);
+            if (sinfight) health_bars(ren, sinfight);
 
-        if (player && game_started)
-            render_player(ren, player);
-        if (player2 && game_started)
-            render_player2(ren, player2);
-        if (enemy && game_started)
-            render_enemy(ren, enemy);
-        if (mulfight && game_started)
-            render_health_bars(ren, mulfight);
-        if (sinfight && !is_multiplayer && game_started)
-            health_bars(ren, sinfight);
+            // ADDED: Render the game over screen on top if the fight is over
+            if (is_multiplayer && mulfight && mulfight->fight_over) {
+                render_game_over_screen_multi(ren, mulfight->winner);
+            } else if (!is_multiplayer && sinfight && sinfight->fight_over) {
+                render_game_over_screen_single(ren, sinfight->winner);
+            }
+        } else {
+             if (play_button_visible) render_button(ren, play);
+             if (single_play_button_visible) render_button(ren, single_play);
+             if (multi_play_button_visible) render_button(ren, multi_play);
+             if (map1_btn_visible) render_button(ren, map1_btn);
+             if (map2_btn_visible) render_button(ren, map2_btn);
+             if (map3_btn_visible) render_button(ren, map3_btn);
+        }
 
         SDL_RenderPresent(ren);
     }
 
     /* ---------- cleanup ---------- */
-    if (player)
-        destroy_player(player);
-    if (player2)
-        destroy_player2(player2);
-    if (enemy)
-        destroy_enemy(enemy); 
-    if (sinfight) 
-        destroy_single_fight(sinfight);
-    if (mulfight)
-        destroy_multi_fight(mulfight);
+    if (player) destroy_player(player);
+    if (player2) destroy_player2(player2);
+    if (enemy) destroy_enemy(enemy); 
+    if (sinfight) destroy_single_fight(sinfight);
+    if (mulfight) destroy_multi_fight(mulfight);
 
+    sound_quit();
     destroy_button(play);
     destroy_button(single_play);
     destroy_button(multi_play);
@@ -375,10 +333,9 @@ int main(int argc, char *argv[])
 
     SDL_DestroyRenderer(ren);
     SDL_DestroyWindow(win);
-    TTF_Quit();
+    text_quit(); // ADDED: Cleanup for the text module
     Mix_CloseAudio();
     IMG_Quit();
     SDL_Quit();
-    sound_system_shutdown();
     return 0;
 }

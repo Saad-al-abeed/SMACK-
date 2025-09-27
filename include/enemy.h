@@ -15,7 +15,14 @@ extern "C"
         L = 0,
         R = 1
     } EnemyDirection;
-
+    typedef enum {
+        AI_DECIDING,      // The AI is thinking what to do next
+        AI_ENGAGING,      // The AI is actively moving towards the player
+        AI_REPOSITIONING, // The AI is moving to a better position (e.g., backing away)
+        AI_ATTACKING,     // The AI is executing an attack
+        AI_BLOCKING,     // The AI is holding a defensive stance
+        AI_EVADING
+    } AIState;
     /* Mirror all player states (incl. new ones) */
     typedef enum
     {
@@ -29,11 +36,16 @@ extern "C"
         ENEMY_SLIDE,
         ENEMY_BLOCK_HURT,
         ENEMY_PRAY,
-        ENEMY_DOWN_ATTACK
+        ENEMY_DOWN_ATTACK,
+        ENEMY_REPOSITIONING 
     } EnemyState;
 
     typedef struct Enemy
     {
+        // -- AI Fields --
+        AIState ai_state;         // The current "thought" of the AI
+        Uint32 ai_action_timer;   // A timer to prevent the AI from changing its mind too quickly
+        Uint32 block_start_time;
         /* --- Transform / physics --- */
         float x, y;
         float velocity_x, velocity_y;
@@ -76,7 +88,11 @@ extern "C"
         SDL_Texture *block_hurt_texture;
         SDL_Texture *pray_texture;
         SDL_Texture *down_attack_texture;
-
+        SDL_Texture *reposition_texture;
+        /* --- Repositioning ---*/
+        Uint32 reposition_start_time; // Tracks how long to reposition for
+        Uint32 last_reposition_time;
+        Uint32 current_reposition_duration;
         /* --- Animation slicing --- */
         int frame_height;
         float frame_width; /* single frame width in the spritesheet */

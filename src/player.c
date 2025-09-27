@@ -3,24 +3,11 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-extern void sound__p_idle(void);
-extern void sound__p_walk(void);
-extern void sound__p_jump(void);
-extern void sound__p_atk(int);
-extern void sound__p_block(void);
-extern void sound__p_hurt(void);
-extern void sound__p_death(void);
-extern void sound__p_slide(void);
-extern void sound__p_block_hurt(void);
-extern void sound__p_pray(void);
-extern void sound__p_down_attack(void);
-
-
 #define GROUND_LEVEL 375
 #define PLAYER_HEIGHT 258
 
 /* PLACEHOLDER tunables */
-#define BLOCK_HURT_DURATION_MS 300
+#define BLOCK_HURT_DURATION_MS 500
 
 static SDL_Texture *load_texture(SDL_Renderer *renderer, const char *path)
 {
@@ -89,7 +76,7 @@ Player *create_player(SDL_Renderer *renderer, float x, float y)
     player->slide_texture = load_texture(renderer, "assets/textures/Final/Slide-sheet.bmp");
     player->block_hurt_texture = load_texture(renderer, "assets/textures/Final/blockhurt.bmp");
     player->pray_texture = load_texture(renderer, "assets/textures/Final/pray_h258_w516.bmp");
-    player->down_attack_texture = load_texture(renderer, "assets/textures/Final/jmph258w516.bmp");
+    player->down_attack_texture = load_texture(renderer, "assets/textures/jmph258w516.bmp");
 
     /* Basic sanity (you will replace with real assets) */
     if (!player->idle_texture || !player->walking_texture || !player->jumping_texture ||
@@ -323,10 +310,15 @@ void update_player(Player *player, Uint32 delta_time)
         if (now - player->attack_start_time >= player->attack_duration)
         {
             player->is_attacking = false;
-            if (player->on_ground)
-                set_player_state(player, PLAYER_IDLE);
-            else
-                set_player_state(player, PLAYER_JUMPING);
+            // MODIFIED: Only change state if the player is still in an attack state.
+            // This prevents overwriting the DEATH state.
+            if (player->state == PLAYER_ATTACKING || player->state == PLAYER_DOWN_ATTACK)
+            {
+                if (player->on_ground)
+                    set_player_state(player, PLAYER_IDLE);
+                else
+                    set_player_state(player, PLAYER_JUMPING);
+            }
         }
     }
 
@@ -516,7 +508,7 @@ void set_player_state(Player *player, PlayerState s)
     case PLAYER_BLOCK_HURT:
         t = player->block_hurt_texture;
         player->frame_count = 6;
-        player->frame_delay = 50;
+        player->frame_delay = 83;
         player->block_hurt_start_time = SDL_GetTicks();
         break;
     case PLAYER_PRAY:
@@ -539,20 +531,4 @@ void set_player_state(Player *player, PlayerState s)
         player->dest_rect.w = (int)player->frame_width;
     }
     player->src_rect.x = 0;
-
-    /* === sound hook === */
-    switch (player->state) {
-        case PLAYER_IDLE:        sound__p_idle(); break;
-        case PLAYER_WALKING:     sound__p_walk(); break;
-        case PLAYER_JUMPING:     sound__p_jump(); break;
-        case PLAYER_ATTACKING:   sound__p_atk(player->current_attack); break;
-        case PLAYER_BLOCKING:    sound__p_block(); break;
-        case PLAYER_HURT:        sound__p_hurt(); break;
-        case PLAYER_DEATH:       sound__p_death(); break;
-        case PLAYER_SLIDE:       sound__p_slide(); break;
-        case PLAYER_BLOCK_HURT:  sound__p_block_hurt(); break;
-        case PLAYER_PRAY:        sound__p_pray(); break;
-        case PLAYER_DOWN_ATTACK: sound__p_down_attack(); break;
-        default: break;
-    }
 }

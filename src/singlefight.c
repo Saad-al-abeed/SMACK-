@@ -4,11 +4,11 @@
 #include <math.h>
 #include <stdbool.h>
 
-/* Mirror multifight.c tunables */
-#define ALLOWED_OVERLAP 150   /* match multi so push feels the same */
-#define ATTACK_RANGE 200.0f   /* horizontal range for normal attacks */
-#define VERTICAL_RANGE 100.0f /* max vertical separation to allow any attack */
-#define HITBOX_W 250
+/* Tunables Mirrored from multifight.c */
+#define ATTACK_RANGE 200.0f
+#define DOWN_ATTACK_RANGE 50.0f
+#define VERTICAL_RANGE 100.0f
+#define ALLOWED_OVERLAP 150
 
 /* ---- Setup / teardown ---- */
 SingleFight *create_single_fight(void)
@@ -34,6 +34,7 @@ SingleFight *create_single_fight(void)
 
     fight->fight_over = false;
     fight->winner = 0;
+    fight->restart_requested = false;
     return fight;
 }
 
@@ -52,21 +53,22 @@ void update_single_fight(SingleFight *fight, Player *p1, Enemy *en, Uint32 delta
     if (!fight || !p1 || !en || fight->fight_over)
         return;
 
+    // Use player's dynamic frame width for hitbox, matching multifight's corrected logic
     fight->fighter1->hitbox.x = (int)p1->x;
     fight->fighter1->hitbox.y = (int)p1->y;
-    fight->fighter1->hitbox.w = HITBOX_W;
-    fight->fighter1->hitbox.h = 150;
+    fight->fighter1->hitbox.w = 250;
+    fight->fighter1->hitbox.h = (p1->state == PLAYER_SLIDE) ? 0 : 150;
 
     fight->fighter2->hitbox.x = (int)en->x;
     fight->fighter2->hitbox.y = (int)en->y;
-    fight->fighter2->hitbox.w = HITBOX_W;
+    fight->fighter2->hitbox.w = 250;
     fight->fighter2->hitbox.h = 150;
 
     collision(fight, p1, en);
-    combat(fight, p1, en); /* now mirrors multifight.c mechanics */
+    combat(fight, p1, en);
 
     fighter1_state(fight->fighter1, p1, delta_time);
-    update_enemy_state(fight->fighter2, en, delta_time); /* enemy AI/state timing UNTOUCHED */
+    update_enemy_state(fight->fighter2, en, delta_time);
 
     if (!fight->fight_over)
     {
@@ -74,11 +76,14 @@ void update_single_fight(SingleFight *fight, Player *p1, Enemy *en, Uint32 delta
         {
             fight->winner = 2;
             fight->fight_over = true;
+            fight->fight_end_time = SDL_GetTicks();
         }
         else if (fight->fighter2->is_dead)
         {
             fight->winner = 1;
             fight->fight_over = true;
+            set_player_state(p1, PLAYER_PRAY); // Player prays on victory
+            fight->fight_end_time = SDL_GetTicks();
         }
     }
 }
@@ -121,21 +126,21 @@ void collision(SingleFight *fight, Player *p1, Enemy *en)
         en->velocity_x = 0;
     }
 
-    if (p1->x < 0)
-        p1->x = 0;
-    if (en->x < 0)
-        en->x = 0;
-    int r = 1280 - HITBOX_W;
-    if (p1->x > r)
-        p1->x = r;
-    if (en->x > r)
-        en->x = r;
+    if (p1->x < 0) p1->x = 0;
+    if (en->x < 0) en->x = 0;
+
+    // Use dynamic width for boundary checks
+    int r1 = 1280 - (int)p1->frame_width;
+    int r2 = 1280 - (int)en->frame_width;
+    if (p1->x > r1) p1->x = r1;
+    if (en->x > r2) en->x = r2;
+
 
     b1->x = (int)p1->x;
     b2->x = (int)en->x;
 }
 
-/* ---- Player normal attack + facing (now also checks vertical distance) ---- */
+/* ---- Hit Detection Logic (Mirrored from multifight.c) ---- */
 static bool facing_p1(Player *a, Enemy *d)
 {
     return (a->direction == FACING_RIGHT && a->x < d->x) ||
@@ -147,52 +152,47 @@ static bool p1_normal_attack_hits(Player *attacker, Enemy *defender)
     float dx = fabsf(attacker->x - defender->x);
     float dy = fabsf(attacker->y - defender->y);
     if (dy > VERTICAL_RANGE)
-        return false; /* must be within 100 px vertically */
+        return false;
     return (dx <= ATTACK_RANGE && facing_p1(attacker, defender));
 }
 
-/* ---- Player's vertical down attack (perfect vertical like multifight) ---- */
 static bool p1_down_attack_hits(Player *attacker, Enemy *defender)
 {
-    if (attacker->state != PLAYER_DOWN_ATTACK)
+    if (attacker->on_ground || attacker->y > defender->y || fabsf(attacker->y - defender->y) > VERTICAL_RANGE)
+    {
         return false;
-    if (attacker->on_ground)
-        return false;
-
+    }
     float dx = fabsf(attacker->x - defender->x);
-    if (dx != 0.0f)
-        return false; /* EXACT vertical alignment (mirror multi) */
-    if (fabsf(attacker->y - defender->y) > VERTICAL_RANGE)
-        return false; /* obey 100 px vertical rule */
-
-    return (attacker->y <= defender->y); /* attacker above defender */
+    return (dx <= DOWN_ATTACK_RANGE);
 }
 
+// MODIFIED: This function now properly separates attack checks based on the attacker's state.
 bool player1_attack_hit(Player *attacker, Enemy *defender)
 {
-    if (p1_down_attack_hits(attacker, defender))
-        return true;
-    return p1_normal_attack_hits(attacker, defender);
+    if (attacker->state == PLAYER_ATTACKING)
+    {
+        return p1_normal_attack_hits(attacker, defender);
+    }
+    else if (attacker->state == PLAYER_DOWN_ATTACK)
+    {
+        return p1_down_attack_hits(attacker, defender);
+    }
+    return false;
 }
 
-/* ---- Enemy normal attack + facing (AI NOT TOUCHED) ---- */
 bool check_enemy_attack_hit(Enemy *attacker, Player *defender)
 {
     float attack_range = 200.0f;
     float dx = fabsf(attacker->x - defender->x);
     float dy = fabsf(attacker->y - defender->y);
 
-    bool facing_correct = false;
-    if (attacker->direction == R && attacker->x < defender->x)
-        facing_correct = true;
-    else if (attacker->direction == L && attacker->x > defender->x)
-        facing_correct = true;
+    bool facing_correct = (attacker->direction == R && attacker->x < defender->x) ||
+                          (attacker->direction == L && attacker->x > defender->x);
 
-    /* Mirror the same vertical rule for consistency */
     return (dx <= attack_range && dy <= VERTICAL_RANGE && facing_correct);
 }
 
-/* ---- Combat: mirror multifight (no stand-still or ground→air gates; simple facing block) ---- */
+/* ---- Combat Logic (Mirrored from multifight.c) ---- */
 void combat(SingleFight *fight, Player *p1, Enemy *en)
 {
     if (fight->fighter1->is_dead || fight->fighter2->is_dead)
@@ -208,14 +208,9 @@ void combat(SingleFight *fight, Player *p1, Enemy *en)
              (p1->x > en->x && en->direction == R));
         bool blocked = en->is_blocking && enemy_facing;
 
-        p1->is_attacking = false; /* same as multifight.c */
-
         if (blocked)
         {
-            /* mirror multifight “attacker gets block-hurt” feel with a simple hurt feedback */
-            fight->fighter1->is_hurt = true;
-            fight->fighter1->hurt_start_time = SDL_GetTicks();
-            set_player_state(p1, PLAYER_HURT);
+            set_player_state(p1, PLAYER_BLOCK_HURT);
         }
         else
         {
@@ -228,32 +223,37 @@ void combat(SingleFight *fight, Player *p1, Enemy *en)
         !fight->fighter1->is_hurt && !fight->fighter1->is_dead &&
         check_enemy_attack_hit(en, p1))
     {
-        bool p1_facing =
-            ((en->x < p1->x && p1->direction == FACING_LEFT) ||
-             (en->x > p1->x && p1->direction == FACING_RIGHT));
-        bool blocked = p1->is_blocking && p1_facing;
+        // A slide is invulnerable to the enemy's attack.
+        bool slide_invulnerable = (p1->state == PLAYER_SLIDE);
 
-        en->is_attacking = false;
-
-        if (blocked)
+        if(slide_invulnerable)
         {
-            fight->fighter2->is_hurt = true;
-            fight->fighter2->hurt_start_time = SDL_GetTicks();
-            set_enemy_state(en, ENEMY_HURT);
+            // Do nothing.
         }
         else
         {
-            damage_to_player1(fight->fighter1, p1, ATTACK_DAMAGE);
+            bool p1_facing =
+                ((en->x < p1->x && p1->direction == FACING_LEFT) ||
+                 (en->x > p1->x && p1->direction == FACING_RIGHT));
+            bool blocked = p1->is_blocking && p1_facing;
+
+            if (blocked)
+            {
+                // Enemy has no block-hurt state, so nothing happens to it.
+            }
+            else
+            {
+                damage_to_player1(fight->fighter1, p1, ATTACK_DAMAGE);
+            }
         }
     }
 }
 
-/* ---- Damage & timers (force death immediately at 0, like multifight) ---- */
+/* ---- Damage & timers ---- */
 void damage_to_player1(Warrior *fighter, Player *player, int damage)
 {
     fighter->health -= damage;
-    if (fighter->health < 0)
-        fighter->health = 0;
+    if (fighter->health < 0) fighter->health = 0;
 
     if (fighter->health == 0)
     {
@@ -272,8 +272,7 @@ void damage_to_player1(Warrior *fighter, Player *player, int damage)
 void apply_damage_to_enemy(Warrior *fighter, Enemy *enemy, int damage)
 {
     fighter->health -= damage;
-    if (fighter->health < 0)
-        fighter->health = 0;
+    if (fighter->health < 0) fighter->health = 0;
 
     if (fighter->health == 0)
     {
@@ -289,20 +288,32 @@ void apply_damage_to_enemy(Warrior *fighter, Enemy *enemy, int damage)
     }
 }
 
+// MODIFIED: This function now includes the attack animation timer logic from multifight.c
 void fighter1_state(Warrior *fighter, Player *player, Uint32 delta_time)
 {
     Uint32 now = SDL_GetTicks();
+    
+    // Attack animation timer
+    if (player->is_attacking && (now - player->attack_start_time >= player->attack_duration))
+    {
+        player->is_attacking = false;
+        if (player->state == PLAYER_ATTACKING || player->state == PLAYER_DOWN_ATTACK || player->state == PLAYER_BLOCK_HURT)
+        {
+            set_player_state(player, player->on_ground ? PLAYER_IDLE : PLAYER_JUMPING);
+        }
+    }
+
+    // Hurt timer
     if (fighter->is_hurt && now - fighter->hurt_start_time >= HURT_ANIMATION_DURATION)
     {
         fighter->is_hurt = false;
         if (player->state == PLAYER_HURT)
-            set_player_state(player, PLAYER_IDLE);
+            set_player_state(player, player->on_ground ? PLAYER_IDLE : PLAYER_JUMPING);
     }
 }
 
 void update_enemy_state(Warrior *fighter, Enemy *enemy, Uint32 delta_time)
 {
-    /* Enemy AI/state timing — left unchanged */
     Uint32 now = SDL_GetTicks();
     if (fighter->is_hurt && now - fighter->hurt_start_time >= HURT_ANIMATION_DURATION)
     {
@@ -338,4 +349,14 @@ void health_bars(SDL_Renderer *renderer, SingleFight *fight)
     SDL_RenderFillRect(renderer, &p2_health);
     SDL_SetRenderDrawColor(renderer, 255, 255, 255, 255);
     SDL_RenderDrawRect(renderer, &p2_bg);
+}
+void handle_single_fight_game_over_input(SingleFight *fight, const Uint8 *keystate)
+{
+    if (fight && fight->fight_over)
+    {
+        if (keystate[SDL_SCANCODE_RETURN])
+        {
+            fight->restart_requested = true;
+        }
+    }
 }

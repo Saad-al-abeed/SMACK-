@@ -3,22 +3,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-extern void sound__p2_idle(void);
-extern void sound__p2_walk(void);
-extern void sound__p2_jump(void);
-extern void sound__p2_atk(int);
-extern void sound__p2_block(void);
-extern void sound__p2_hurt(void);
-extern void sound__p2_death(void);
-extern void sound__p2_slide(void);
-extern void sound__p2_block_hurt(void);
-extern void sound__p2_pray(void);
-extern void sound__p2_down_attack(void);
-
-
 #define GROUND_LEVEL 375
 #define PLAYER2_HEIGHT 258
-#define BLOCK_HURT_DURATION_MS 300
+#define BLOCK_HURT_DURATION_MS 500
 
 static SDL_Texture *load_texture(SDL_Renderer *renderer, const char *path)
 {
@@ -49,8 +36,8 @@ Player2 *create_player2(SDL_Renderer *renderer, float x, float y)
     p->velocity_x = 0;
     p->velocity_y = 0;
     p->speed = 450.0f;
-    p->jump_force = -900.0f;
-    p->gravity = 1500.0f;
+    p->jump_force = -700.0f;
+    p->gravity = 500.0f;
     p->on_ground = false;
 
     p->idle_texture = load_texture(renderer, "assets/textures/Final/Idle_h258_w516.bmp");
@@ -65,7 +52,7 @@ Player2 *create_player2(SDL_Renderer *renderer, float x, float y)
     p->slide_texture = load_texture(renderer, "assets/textures/Final/Slide-sheet.bmp");
     p->block_hurt_texture = load_texture(renderer, "assets/textures/Final/blockhurt.bmp");
     p->pray_texture = load_texture(renderer, "assets/textures/Final/pray_h258_w516.bmp");
-    p->down_attack_texture = load_texture(renderer, "assets/textures/Final/jmph258w516.bmp");
+    p->down_attack_texture = load_texture(renderer, "assets/textures/jmph258w516.bmp");
 
     if (!p->idle_texture || !p->walking_texture || !p->jumping_texture ||
         !p->attack_texture || !p->attack2_texture || !p->attack3_texture ||
@@ -283,10 +270,15 @@ void update_player2(Player2 *p, Uint32 dt_ms)
         if (now - p->attack_start_time >= p->attack_duration)
         {
             p->is_attacking = false;
-            if (p->on_ground)
-                set_player2_state(p, PLAYER2_IDLE);
-            else
-                set_player2_state(p, PLAYER2_JUMPING);
+            // MODIFIED: Only change state if the player is still in an attack state.
+            // This prevents overwriting the DEATH state.
+            if (p->state == PLAYER2_ATTACKING || p->state == PLAYER2_DOWN_ATTACK)
+            {
+                if (p->on_ground)
+                    set_player2_state(p, PLAYER2_IDLE);
+                else
+                    set_player2_state(p, PLAYER2_JUMPING);
+            }
         }
     }
 
@@ -457,7 +449,7 @@ void set_player2_state(Player2 *p, Player2State s)
     case PLAYER2_BLOCK_HURT:
         t = p->block_hurt_texture;
         p->frame_count = 6;
-        p->frame_delay = 50;
+        p->frame_delay = 83;
         p->block_hurt_start_time = SDL_GetTicks();
         break;
     case PLAYER2_PRAY:
@@ -480,20 +472,4 @@ void set_player2_state(Player2 *p, Player2State s)
         p->dest_rect.w = (int)p->frame_width;
     }
     p->src_rect.x = 0;
-
-    /* === sound hook === */
-    switch (p->state) {
-        case PLAYER2_IDLE:        sound__p2_idle(); break;
-        case PLAYER2_WALKING:     sound__p2_walk(); break;
-        case PLAYER2_JUMPING:     sound__p2_jump(); break;
-        case PLAYER2_ATTACKING:   sound__p2_atk(p->current_attack); break;
-        case PLAYER2_BLOCKING:    sound__p2_block(); break;
-        case PLAYER2_HURT:        sound__p2_hurt(); break;
-        case PLAYER2_DEATH:       sound__p2_death(); break;
-        case PLAYER2_SLIDE:       sound__p2_slide(); break;
-        case PLAYER2_BLOCK_HURT:  sound__p2_block_hurt(); break;
-        case PLAYER2_PRAY:        sound__p2_pray(); break;
-        case PLAYER2_DOWN_ATTACK: sound__p2_down_attack(); break;
-        default: break;
-    }
 }

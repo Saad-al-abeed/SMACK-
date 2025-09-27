@@ -9,7 +9,7 @@
 // Fight system constants
 #define MAX_HEALTH 100
 #define ATTACK_DAMAGE 5
-#define HURT_ANIMATION_DURATION 300   // milliseconds
+#define HURT_ANIMATION_DURATION 500   // milliseconds
 #define DEATH_ANIMATION_DURATION 500 // milliseconds
 #define PLAYER_COLLISION_OFFSET 50    // pixels between players when colliding
 
@@ -31,6 +31,8 @@ typedef struct
     Fighter *fighter2;
     bool fight_over;
     int winner; // 0 = no winner yet, 1 = player1, 2 = player2
+    bool restart_requested;
+    Uint32 fight_end_time;
 } MultiFight;
 
 // Function declarations
@@ -46,5 +48,6 @@ void update_fighter2_state(Fighter *fighter, Player2 *player);
 bool check_player1_attack_hit(Player *attacker, Player2 *defender);
 bool check_player2_attack_hit(Player2 *attacker, Player *defender);
 void render_health_bars(SDL_Renderer *renderer, MultiFight *fight);
+void handle_multi_fight_game_over_input(MultiFight *fight, const Uint8 *keystate);
 
 #endif // MULTI_FIGHT_H
