@@ -36,8 +36,8 @@ Player2 *create_player2(SDL_Renderer *renderer, float x, float y)
     p->velocity_x = 0;
     p->velocity_y = 0;
     p->speed = 450.0f;
-    p->jump_force = -700.0f;
-    p->gravity = 500.0f;
+    p->jump_force = -900.0f;
+    p->gravity = 1500.0f;
     p->on_ground = false;
 
     p->idle_texture = load_texture(renderer, "assets/textures/Final/Idle_h258_w516.bmp");
